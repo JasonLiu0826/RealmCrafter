@@ -64,7 +64,7 @@ public class StoryDO {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
-    private SettingPackDO.AssetStatus status = SettingPackDO.AssetStatus.NORMAL;
+    private Status status = Status.NORMAL;
 
     /** 乐观锁版本号，用于多端同步防覆盖 */
     @Version
@@ -90,5 +90,9 @@ public class StoryDO {
     @PreUpdate
     protected void onUpdate() {
         updateTime = LocalDateTime.now();
+    }
+
+    public enum Status {
+        NORMAL, DELETED
     }
 }

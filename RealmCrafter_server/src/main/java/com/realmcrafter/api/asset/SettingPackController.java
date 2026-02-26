@@ -6,11 +6,14 @@ import com.realmcrafter.api.dto.Result;
 import com.realmcrafter.domain.asset.service.SettingPackService;
 import com.realmcrafter.infrastructure.persistence.entity.SettingPackDO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/settings")
@@ -21,8 +24,11 @@ public class SettingPackController {
     private final SettingPackService settingPackService;
 
     @GetMapping
-    public Result<List<SettingPackDO>> list(@RequestHeader("X-User-Id") Long userId) {
-        return Result.ok(settingPackService.listByUser(userId));
+    public Result<Page<SettingPackDO>> list(@RequestHeader("X-User-Id") Long userId,
+                                            @RequestParam(defaultValue = "0") int page,
+                                            @RequestParam(defaultValue = "20") int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updateTime"));
+        return Result.ok(settingPackService.listByUser(userId, pageable));
     }
 
     @PostMapping

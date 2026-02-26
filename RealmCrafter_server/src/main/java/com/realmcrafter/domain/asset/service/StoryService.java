@@ -6,6 +6,8 @@ import com.realmcrafter.infrastructure.persistence.entity.StoryDO;
 import com.realmcrafter.infrastructure.persistence.repository.SettingPackRepository;
 import com.realmcrafter.infrastructure.persistence.repository.StoryRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,8 +24,8 @@ public class StoryService {
     private final SettingPackRepository settingPackRepository;
 
     @Transactional(readOnly = true)
-    public List<StoryDO> listByUser(Long userId) {
-        return storyRepository.findByUserIdOrderByUpdateTimeDesc(userId);
+    public Page<StoryDO> listByUser(Long userId, Pageable pageable) {
+        return storyRepository.findByUserIdAndStatus(userId, StoryDO.Status.NORMAL, pageable);
     }
 
     @Transactional
@@ -47,6 +49,7 @@ public class StoryService {
         story.setTitle(title);
         story.setCover(cover);
         story.setDescription(description);
+        story.setStatus(StoryDO.Status.NORMAL);
 
         return storyRepository.save(story);
     }
@@ -60,6 +63,17 @@ public class StoryService {
         }
         story.setTitle(newTitle);
         return storyRepository.save(story);
+    }
+
+    @Transactional
+    public void delete(String storyId, Long userId) {
+        StoryDO story = storyRepository.findById(storyId)
+                .orElseThrow(() -> new IllegalArgumentException("故事不存在"));
+        if (!story.getUserId().equals(userId)) {
+            throw new IllegalArgumentException("无权删除该故事");
+        }
+        story.setStatus(StoryDO.Status.DELETED);
+        storyRepository.save(story);
     }
 }
 

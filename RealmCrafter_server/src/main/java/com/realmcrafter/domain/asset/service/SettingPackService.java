@@ -7,10 +7,10 @@ import com.realmcrafter.infrastructure.persistence.entity.SettingPackDO;
 import com.realmcrafter.infrastructure.persistence.repository.SettingPackRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
 
 /**
  * 设定集领域服务。
@@ -22,11 +22,11 @@ public class SettingPackService {
     private final SettingPackRepository settingPackRepository;
 
     /**
-     * 分页/列表获取当前用户的设定集（按更新时间倒序）。
+     * 分页/列表获取当前用户的设定集。
      */
     @Transactional(readOnly = true)
-    public List<SettingPackDO> listByUser(Long userId) {
-        return settingPackRepository.findByUserIdOrderByUpdateTimeDesc(userId);
+    public Page<SettingPackDO> listByUser(Long userId, Pageable pageable) {
+        return settingPackRepository.findByUserId(userId, pageable);
     }
 
     /**

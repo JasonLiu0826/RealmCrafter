@@ -59,6 +59,18 @@ public class UserDO {
     @Column(name = "current_theme_id", length = 64)
     private String currentThemeId;
 
+    /**
+     * 混沌阈值（Temperature），范围建议 0.1 - 1.0，默认 0.7。
+     */
+    @Column(name = "chaos_level")
+    private Double chaosLevel = 0.7;
+
+    /**
+     * 首选的大模型名称，例如 deepseek-v3、kimi 等。
+     */
+    @Column(name = "preferred_model", length = 64)
+    private String preferredModel;
+
     @Column(name = "create_time", nullable = false, updatable = false)
     private LocalDateTime createTime;
 
