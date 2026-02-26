@@ -1,5 +1,7 @@
 package com.realmcrafter.infrastructure.persistence.entity;
 
+import com.realmcrafter.domain.asset.dto.SettingContentDTO;
+import com.realmcrafter.infrastructure.persistence.converter.JsonConverter;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -42,8 +44,9 @@ public class SettingPackDO {
     @Column(length = 512)
     private String description;
 
+    @Convert(converter = JsonConverter.class)
     @Column(nullable = false, columnDefinition = "json")
-    private String content;
+    private SettingContentDTO content;
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price = BigDecimal.ZERO;
