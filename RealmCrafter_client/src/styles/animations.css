@@ -1,0 +1,16 @@
+@keyframes breathingGlow {
+  0% {
+    box-shadow: 0 0 6px var(--glow-color);
+  }
+  50% {
+    box-shadow: 0 0 22px var(--glow-color);
+  }
+  100% {
+    box-shadow: 0 0 6px var(--glow-color);
+  }
+}
+
+.vip-breathing {
+  animation: breathingGlow 3s ease-in-out infinite;
+}
+

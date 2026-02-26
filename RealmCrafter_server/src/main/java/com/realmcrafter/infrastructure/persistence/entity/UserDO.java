@@ -53,6 +53,12 @@ public class UserDO {
     @Column(name = "vip_expire_time")
     private LocalDateTime vipExpireTime;
 
+    /**
+     * 当前选中的主题 ID，例如 classic_white、hacker_green 等。
+     */
+    @Column(name = "current_theme_id", length = 64)
+    private String currentThemeId;
+
     @Column(name = "create_time", nullable = false, updatable = false)
     private LocalDateTime createTime;
 
