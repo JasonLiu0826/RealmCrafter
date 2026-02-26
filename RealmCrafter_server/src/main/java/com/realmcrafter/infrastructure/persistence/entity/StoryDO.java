@@ -74,6 +74,18 @@ public class StoryDO {
     @Column(name = "device_hash", length = 64)
     private String deviceHash;
 
+    /**
+     * 最近生成的章节序号，用于首页显示进度。
+     */
+    @Column(name = "last_chapter_index")
+    private Integer lastChapterIndex = 0;
+
+    /**
+     * 最近阅读时间，用于首页列表“最近阅读”展示。
+     */
+    @Column(name = "last_read_time")
+    private LocalDateTime lastReadTime;
+
     @Column(name = "create_time", nullable = false, updatable = false)
     private LocalDateTime createTime;
 

@@ -24,8 +24,12 @@ public class StoryService {
     private final SettingPackRepository settingPackRepository;
 
     @Transactional(readOnly = true)
-    public Page<StoryDO> listByUser(Long userId, Pageable pageable) {
-        return storyRepository.findByUserIdAndStatus(userId, StoryDO.Status.NORMAL, pageable);
+    public Page<StoryDO> listByUser(Long userId, String keyword, Pageable pageable) {
+        if (keyword == null || keyword.isBlank()) {
+            return storyRepository.findByUserIdAndStatus(userId, StoryDO.Status.NORMAL, pageable);
+        }
+        return storyRepository.findByUserIdAndStatusAndTitleContainingIgnoreCase(
+                userId, StoryDO.Status.NORMAL, keyword.trim(), pageable);
     }
 
     @Transactional
@@ -50,6 +54,7 @@ public class StoryService {
         story.setCover(cover);
         story.setDescription(description);
         story.setStatus(StoryDO.Status.NORMAL);
+        story.setLastChapterIndex(0);
 
         return storyRepository.save(story);
     }

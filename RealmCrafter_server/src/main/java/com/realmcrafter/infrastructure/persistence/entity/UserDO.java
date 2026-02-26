@@ -71,6 +71,12 @@ public class UserDO {
     @Column(name = "preferred_model", length = 64)
     private String preferredModel;
 
+    /**
+     * 用户自定义的大模型 API Key（BYOK 模式）。
+     */
+    @Column(name = "api_key", length = 255)
+    private String apiKey;
+
     @Column(name = "create_time", nullable = false, updatable = false)
     private LocalDateTime createTime;
 

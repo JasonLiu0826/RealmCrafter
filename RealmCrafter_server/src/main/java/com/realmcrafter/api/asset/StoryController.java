@@ -26,9 +26,10 @@ public class StoryController {
     @GetMapping
     public Result<Page<StoryDO>> list(@RequestHeader("X-User-Id") Long userId,
                                       @RequestParam(defaultValue = "0") int page,
-                                      @RequestParam(defaultValue = "20") int size) {
+                                      @RequestParam(defaultValue = "20") int size,
+                                      @RequestParam(required = false) String keyword) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updateTime"));
-        return Result.ok(storyService.listByUser(userId, pageable));
+        return Result.ok(storyService.listByUser(userId, keyword, pageable));
     }
 
     @PostMapping
