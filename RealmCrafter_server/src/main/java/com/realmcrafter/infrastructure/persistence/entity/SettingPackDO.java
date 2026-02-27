@@ -69,6 +69,12 @@ public class SettingPackDO {
     @Column(name = "device_hash", length = 64)
     private String deviceHash;
 
+    /**
+     * 文本指纹（SimHash），用于检测洗稿与抄袭。
+     */
+    @Column(name = "simhash", length = 64)
+    private String simhash;
+
     @Column(name = "create_time", nullable = false, updatable = false)
     private LocalDateTime createTime;
 

@@ -75,6 +75,12 @@ public class StoryDO {
     private String deviceHash;
 
     /**
+     * 文本指纹（SimHash），用于检测洗稿与抄袭。
+     */
+    @Column(name = "simhash", length = 64)
+    private String simhash;
+
+    /**
      * 最近生成的章节序号，用于首页显示进度。
      */
     @Column(name = "last_chapter_index")

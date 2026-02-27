@@ -1,17 +1,29 @@
 import { useEffect } from 'react'
 import { themes } from './assets/themes'
+import { AdBreakScreen } from './components/ads'
+import { useAdManager } from './hooks/useAdManager'
 import { useTheme } from './hooks/useTheme'
-import { useThemeStore } from './store/useThemeStore'
+import { useThemeStore, type ThemeState } from './store/useThemeStore'
 
 function App() {
-  const hydrate = useThemeStore((state) => state.hydrate)
+  const hydrate = useThemeStore((state: ThemeState) => state.hydrate)
   const { currentThemeId, currentTheme, setTheme } = useTheme()
+  const { showAdBreak, onAdComplete, onAdDismiss } = useAdManager({
+    adBreakSkippable: true,
+  })
 
   useEffect(() => {
     hydrate()
   }, [hydrate])
 
   return (
+    <>
+      <AdBreakScreen
+        visible={showAdBreak}
+        onClose={onAdDismiss}
+        onWatchComplete={onAdComplete}
+        skippable
+      />
     <div
       className="min-h-screen flex items-center justify-center transition-colors duration-300"
       style={{ background: 'var(--color-bg)' }}
@@ -42,6 +54,7 @@ function App() {
         </div>
       </div>
     </div>
+    </>
   )
 }
 

@@ -18,6 +18,16 @@ spring:
         dialect: org.hibernate.dialect.MySQL8Dialect
         format_sql: true
     open-in-view: false
+  redis:
+    host: localhost
+    port: 6379
+    password: ''
+    database: 0
 
 server:
   port: 8080
+
+# 计费：每章消耗 Token 数
+realmcrafter:
+  billing:
+    tokens-per-chapter: 5000

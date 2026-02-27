@@ -1,8 +1,11 @@
 package com.realmcrafter.config;
 
 import com.realmcrafter.api.dto.Result;
+import com.realmcrafter.domain.billing.AdTriggerRequiredException;
+import com.realmcrafter.domain.billing.InsufficientTokenException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -10,6 +13,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import javax.servlet.http.HttpServletRequest;
+import java.util.Map;
 
 /**
  * 全局异常处理器。
@@ -22,11 +26,32 @@ public class GlobalExceptionHandler {
     /** 同步冲突业务码，便于前端识别并展示合并面板 */
     public static final int CODE_SYNC_CONFLICT = 409;
 
+    /** 广告触发业务码 451，前端据此调起插屏 */
+    public static final int CODE_AD_TRIGGER = 451;
+
+    @ExceptionHandler(AdTriggerRequiredException.class)
+    public ResponseEntity<Result<Map<String, Object>>> handleAdTrigger(AdTriggerRequiredException e, HttpServletRequest request) {
+        log.debug("AD_TRIGGER: uri={}", request.getRequestURI());
+        Result<Map<String, Object>> body = Result.<Map<String, Object>>builder()
+                .code(CODE_AD_TRIGGER)
+                .message("AD_TRIGGER")
+                .data(Map.of("needAd", true))
+                .build();
+        return ResponseEntity.status(HttpStatus.UNAVAILABLE_FOR_LEGAL_REASONS).body(body);
+    }
+
     @ExceptionHandler(SyncConflictException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Result<?> handleSyncConflict(SyncConflictException e, HttpServletRequest request) {
         log.warn("Sync conflict: uri={}, message={}", request.getRequestURI(), e.getMessage());
         return Result.fail(CODE_SYNC_CONFLICT, e.getMessage());
+    }
+
+    @ExceptionHandler(InsufficientTokenException.class)
+    @ResponseStatus(HttpStatus.PAYMENT_REQUIRED)
+    public Result<?> handleInsufficientToken(InsufficientTokenException e, HttpServletRequest request) {
+        log.warn("Insufficient token: uri={}, message={}", request.getRequestURI(), e.getMessage());
+        return Result.fail(402, e.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

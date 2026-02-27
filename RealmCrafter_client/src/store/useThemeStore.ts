@@ -3,7 +3,7 @@ import { DEFAULT_THEME_ID, ThemeId, themes } from '../assets/themes'
 
 const THEME_STORAGE_KEY = 'realmcrafter:themeId'
 
-interface ThemeState {
+export interface ThemeState {
   currentThemeId: ThemeId
   setTheme: (themeId: ThemeId) => void
   hydrate: () => void

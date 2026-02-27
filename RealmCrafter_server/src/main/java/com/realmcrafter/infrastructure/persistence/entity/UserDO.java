@@ -54,28 +54,22 @@ public class UserDO {
     private LocalDateTime vipExpireTime;
 
     /**
-     * 当前选中的主题 ID，例如 classic_white、hacker_green 等。
+     * 是否开启自定义 API（BYOK）模式。
      */
-    @Column(name = "current_theme_id", length = 64)
-    private String currentThemeId;
+    @Column(name = "is_byok", nullable = false)
+    private Boolean isByok = false;
 
     /**
-     * 混沌阈值（Temperature），范围建议 0.1 - 1.0，默认 0.7。
+     * AI 交互计数器（每生成 1 章 +1，满 10 章触发广告）。
      */
-    @Column(name = "chaos_level")
-    private Double chaosLevel = 0.7;
+    @Column(name = "interaction_counter", nullable = false)
+    private Integer interactionCounter = 0;
 
     /**
-     * 首选的大模型名称，例如 deepseek-v3、kimi 等。
+     * 免广告特权到期时间（如看一次视频免 1 小时）。
      */
-    @Column(name = "preferred_model", length = 64)
-    private String preferredModel;
-
-    /**
-     * 用户自定义的大模型 API Key（BYOK 模式）。
-     */
-    @Column(name = "api_key", length = 255)
-    private String apiKey;
+    @Column(name = "ad_free_expire_time")
+    private LocalDateTime adFreeExpireTime;
 
     @Column(name = "create_time", nullable = false, updatable = false)
     private LocalDateTime createTime;
