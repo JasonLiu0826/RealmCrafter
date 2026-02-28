@@ -3,6 +3,7 @@ package com.realmcrafter.domain.chapter.service;
 import com.realmcrafter.domain.asset.dto.SettingContentDTO;
 import com.realmcrafter.infrastructure.persistence.entity.ChapterDO;
 import com.realmcrafter.infrastructure.persistence.entity.SettingPackDO;
+import com.realmcrafter.infrastructure.vector.VectorMemoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -11,8 +12,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * 章节生成领域服务：三级混合记忆中的 L1（绝对记忆）与 L2（短期滑动窗口）拼装。
- * L3 RAG 暂不实现，由后续扩展。
+ * 章节生成领域服务：三级混合记忆 L1（设定集）、L2（短期滑动窗口）、L3（RAG 回忆碎片）拼装。
  */
 @Service
 @RequiredArgsConstructor
@@ -20,6 +20,11 @@ public class ChapterGenerationService {
 
     @Value("${realmcrafter.engine.l2-window-size:5}")
     private int l2WindowSize = 5;
+
+    @Value("${realmcrafter.engine.l3-top-k:3}")
+    private int l3TopK = 3;
+
+    private final VectorMemoryService vectorMemoryService;
 
     private static final String L1_TEMPLATE =
             "你是一位严谨的互动小说引擎。必须严格遵守以下设定与世界观，不得偏离。\n\n"
@@ -65,12 +70,35 @@ public class ChapterGenerationService {
     }
 
     /**
-     * 合并 L1 + L2 为最终系统提示。
+     * 构建 L3 潜意识记忆：从向量库检索与用户意图最相关的历史碎片。
      */
-    public String assembleSystemPrompt(SettingPackDO settingPack, List<ChapterDO> recentChapters) {
+    public String buildL3Context(String storyId, String userIntent) {
+        List<String> fragments = vectorMemoryService.searchRelevantFragments(storyId, userIntent, l3TopK);
+        if (fragments == null || fragments.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n\n【历史回忆碎片（可呼应伏笔）】\n");
+        for (int i = 0; i < fragments.size(); i++) {
+            sb.append("— 碎片").append(i + 1).append(" —\n").append(fragments.get(i)).append("\n");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 合并 L1 + L2 + L3 为最终系统提示。
+     */
+    public String assembleSystemPrompt(SettingPackDO settingPack, List<ChapterDO> recentChapters,
+                                       String storyId, String userIntent) {
         String l1 = buildL1SystemPrompt(settingPack);
         String l2 = buildL2Context(recentChapters);
-        return l1 + l2;
+        String l3 = buildL3Context(storyId, userIntent);
+        return l1 + l2 + l3;
+    }
+
+    /**
+     * 仅 L1 + L2（兼容旧调用，无 L3）。
+     */
+    public String assembleSystemPrompt(SettingPackDO settingPack, List<ChapterDO> recentChapters) {
+        return assembleSystemPrompt(settingPack, recentChapters, null, null);
     }
 
     private static String nullToEmpty(String s) {

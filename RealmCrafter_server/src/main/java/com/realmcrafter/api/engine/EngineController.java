@@ -2,6 +2,7 @@ package com.realmcrafter.api.engine;
 
 import com.realmcrafter.api.engine.dto.GenerateStreamRequest;
 import com.realmcrafter.application.chapter.ChapterApplicationService;
+import com.realmcrafter.config.ContentViolationException;
 import com.realmcrafter.infrastructure.llm.dto.StreamChunk;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -55,6 +56,12 @@ public class EngineController {
                         Boolean.TRUE.equals(request.getUseByok()),
                         chunk -> sendChunk(emitter, chunk)
                 );
+            } catch (ContentViolationException e) {
+                log.warn("Content violation, cutting SSE: storyId={}, message={}", request.getStoryId(), e.getMessage());
+                try {
+                    emitter.send(SseEmitter.event().name("error").data(Map.of("message", e.getMessage(), "interrupt", true)));
+                } catch (IOException ignored) {}
+                emitter.completeWithError(e);
             } catch (Exception e) {
                 try {
                     emitter.send(SseEmitter.event().name("error").data(Map.of("message", e.getMessage())));

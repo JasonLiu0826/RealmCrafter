@@ -2,6 +2,7 @@ package com.realmcrafter.infrastructure.llm;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.realmcrafter.config.ContentViolationException;
 import com.realmcrafter.infrastructure.llm.dto.LlmStreamRequest;
 import com.realmcrafter.infrastructure.llm.dto.StreamChunk;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +30,9 @@ public class DeepSeekClient implements LlmClient {
 
     private static final String BRANCHES_MARKER = "BRANCHES:\n";
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final int SLIDING_WINDOW_SIZE = 50;
+    /** Mock 违禁词：命中则模拟异步机审拦截 */
+    private static final String[] MOCK_FORBIDDEN = {"违禁", "[违规]", "敏感词"};
 
     @Value("${realmcrafter.llm.deepseek.url:https://api.deepseek.com}")
     private String baseUrl;
@@ -63,6 +67,7 @@ public class DeepSeekClient implements LlmClient {
         );
 
         StringBuilder contentBuffer = new StringBuilder();
+        StringBuilder slidingWindow = new StringBuilder(SLIDING_WINDOW_SIZE + 64);
         StringBuilder branchesBuffer = new StringBuilder();
         boolean inBranches = false;
         int bracketBalance = 0;
@@ -121,6 +126,14 @@ public class DeepSeekClient implements LlmClient {
                                 String before = piece.substring(0, idx);
                                 if (!before.isEmpty()) {
                                     contentBuffer.append(before);
+                                    for (char c : before.toCharArray()) {
+                                        slidingWindow.append(c);
+                                        if (slidingWindow.length() >= SLIDING_WINDOW_SIZE) {
+                                            String window = slidingWindow.toString();
+                                            slidingWindow.delete(0, slidingWindow.length() - SLIDING_WINDOW_SIZE / 2);
+                                            mockAsyncAudit(window, chunkConsumer);
+                                        }
+                                    }
                                     chunkConsumer.accept(StreamChunk.content(before));
                                 }
                                 String after = piece.substring(idx + BRANCHES_MARKER.length());
@@ -140,6 +153,14 @@ public class DeepSeekClient implements LlmClient {
                                 }
                             } else {
                                 contentBuffer.append(piece);
+                                for (char c : piece.toCharArray()) {
+                                    slidingWindow.append(c);
+                                    if (slidingWindow.length() >= SLIDING_WINDOW_SIZE) {
+                                        String window = slidingWindow.toString();
+                                        slidingWindow.delete(0, slidingWindow.length() - SLIDING_WINDOW_SIZE / 2);
+                                        mockAsyncAudit(window, chunkConsumer);
+                                    }
+                                }
                                 chunkConsumer.accept(StreamChunk.content(piece));
                             }
                         }
@@ -163,6 +184,21 @@ public class DeepSeekClient implements LlmClient {
 
         chunkConsumer.accept(StreamChunk.done());
         return totalTokens[0];
+    }
+
+    /**
+     * 模拟异步机审：50 字滑动窗口内容送检，命中违禁则立即抛异常切断 SSE。
+     * 后续可替换为阿里云内容安全 API 异步回调。
+     */
+    private static void mockAsyncAudit(String window, Consumer<StreamChunk> chunkConsumer) {
+        if (window == null || window.isEmpty()) return;
+        String lower = window.toLowerCase();
+        for (String forbidden : MOCK_FORBIDDEN) {
+            if (lower.contains(forbidden.toLowerCase())) {
+                log.warn("Sliding window audit hit: window snippet contains forbidden pattern");
+                throw new ContentViolationException("内容安全校验未通过，已中断生成");
+            }
+        }
     }
 
     private static List<String> parseBranchesArray(String raw) {

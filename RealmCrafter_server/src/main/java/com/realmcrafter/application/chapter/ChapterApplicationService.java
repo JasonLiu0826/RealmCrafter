@@ -15,6 +15,7 @@ import com.realmcrafter.infrastructure.persistence.repository.SettingPackReposit
 import com.realmcrafter.infrastructure.persistence.repository.StoryRepository;
 import com.realmcrafter.infrastructure.persistence.repository.UserRepository;
 import com.realmcrafter.infrastructure.redis.StoryGenerationLock;
+import com.realmcrafter.infrastructure.vector.VectorMemoryService;
 import com.realmcrafter.security.audit.SensitiveWordTrie;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +43,7 @@ public class ChapterApplicationService {
     private final LlmClient llmClient;
     private final StoryGenerationLock storyGenerationLock;
     private final List<BillingStrategy> billingStrategies;
+    private final VectorMemoryService vectorMemoryService;
 
     /**
      * 流式生成一章：前置校验 → 加锁 → 计费预扣 → 拼装 L1+L2 → 调用 LLM 流式输出 → 净化 → 回调 chunkConsumer（含 content/branches/done）。
@@ -74,7 +76,8 @@ public class ChapterApplicationService {
             var settingPack = settingPackRepository.findById(story.getSettingPackId())
                     .orElseThrow(() -> new IllegalArgumentException("关联设定集不存在"));
             List<ChapterDO> recent = chapterRepository.findTop5ByStoryIdOrderByChapterIndexDesc(storyId);
-            String systemPrompt = chapterGenerationService.assembleSystemPrompt(settingPack, recent);
+            String userIntent = (userChoice != null && !userChoice.isBlank()) ? userChoice : "";
+            String systemPrompt = chapterGenerationService.assembleSystemPrompt(settingPack, recent, storyId, userIntent);
 
             String userMessage = (userChoice != null && !userChoice.isBlank())
                     ? userChoice
@@ -124,6 +127,8 @@ public class ChapterApplicationService {
 
             story.setLastChapterIndex(nextIndex);
             storyRepository.save(story);
+
+            vectorMemoryService.indexChapterChunks(storyId, chapter.getId() != null ? chapter.getId().longValue() : nextIndex, chapter.getContent());
 
             // 当前阶段使用预扣（beforeChapterGeneration）；后续可改为按 totalTokens 实际结算
         } finally {
