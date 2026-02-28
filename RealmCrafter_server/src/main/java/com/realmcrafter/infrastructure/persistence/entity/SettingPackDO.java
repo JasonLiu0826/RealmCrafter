@@ -51,6 +51,11 @@ public class SettingPackDO {
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price = BigDecimal.ZERO;
 
+    /** 允许克隆下载：false 时仅支持云端引用，禁止克隆到本地 */
+    @Column(name = "allow_download", nullable = false)
+    private Boolean allowDownload = true;
+
+    /** 允许二次修改：fork 后的副本是否可调用更新接口 */
     @Column(name = "allow_modify", nullable = false)
     private Boolean allowModify = true;
 

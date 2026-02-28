@@ -20,5 +20,11 @@ public class CreateSettingRequest {
     private SettingContentDTO content;
 
     private String deviceHash;
+
+    /** 允许克隆下载，默认 true */
+    private Boolean allowDownload = true;
+
+    /** 允许二次修改（Fork 副本是否可更新），默认 true */
+    private Boolean allowModify = true;
 }
 

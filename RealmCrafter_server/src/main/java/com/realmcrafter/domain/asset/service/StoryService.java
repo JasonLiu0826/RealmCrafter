@@ -33,6 +33,7 @@ public class StoryService {
 
     private final StoryRepository storyRepository;
     private final SettingPackRepository settingPackRepository;
+    private final SettingPackService settingPackService;
     private final ChapterRepository chapterRepository;
     private final UserRepository userRepository;
     private final WalletTransactionRepository walletTransactionRepository;
@@ -126,7 +127,12 @@ public class StoryService {
     }
 
     /**
-     * 硬核 Fork：复制故事 + 深拷贝所有章节，血统记录 sourceStoryId；若原作为付费则扣费并 70% 分润给原作者。
+     * Fork 故事：无论 allowDownload 状态，均深拷贝 StoryDO + 所有 ChapterDO（满足云端续写与离线阅读）。
+     * 血统 sourceStoryId 永远保留；设定集联动由 cloneIncludesSettings 与绑定的 allowDownload 决定。
+     * <p>
+     * 设定集联动：
+     * - cloneIncludesSettings=true 且 绑定设定集 allowDownload=true：自动 fork 设定集，新故事指向新设定副本
+     * - cloneIncludesSettings=false：新故事 settingPackId 直接引用原作者设定集（共享世界观图纸）
      */
     @Transactional
     public StoryDO forkStory(String sourceStoryId, Long forkUserId) {
@@ -168,11 +174,25 @@ public class StoryService {
             }
         }
 
+        String newSettingPackId;
+        if (Boolean.TRUE.equals(original.getCloneIncludesSettings())) {
+            SettingPackDO boundSetting = settingPackRepository.findById(original.getSettingPackId())
+                    .orElseThrow(() -> new IllegalArgumentException("关联设定集不存在"));
+            if (Boolean.TRUE.equals(boundSetting.getAllowDownload())) {
+                SettingPackDO forkedSetting = settingPackService.forkSetting(original.getSettingPackId(), forkUserId);
+                newSettingPackId = forkedSetting.getId();
+            } else {
+                throw new IllegalArgumentException("该故事绑定的设定集仅支持云端引用，禁止克隆下载");
+            }
+        } else {
+            newSettingPackId = original.getSettingPackId();
+        }
+
         String newId = AssetIdGenerator.generateId("gs", forkUserId);
         StoryDO newStory = new StoryDO();
         newStory.setId(newId);
         newStory.setUserId(forkUserId);
-        newStory.setSettingPackId(original.getSettingPackId());
+        newStory.setSettingPackId(newSettingPackId);
         newStory.setSourceStoryId(original.getId());
         newStory.setTitle(original.getTitle());
         newStory.setCover(original.getCover());

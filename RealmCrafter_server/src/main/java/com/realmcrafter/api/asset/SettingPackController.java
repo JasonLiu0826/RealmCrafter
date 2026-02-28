@@ -40,7 +40,9 @@ public class SettingPackController {
                 request.getCover(),
                 request.getDescription(),
                 request.getContent(),
-                request.getDeviceHash()
+                request.getDeviceHash(),
+                request.getAllowDownload(),
+                request.getAllowModify()
         );
         return Result.ok(created);
     }
@@ -63,9 +65,21 @@ public class SettingPackController {
                 request.getCover(),
                 request.getDescription(),
                 request.getContent(),
-                request.getDeviceHash()
+                request.getDeviceHash(),
+                request.getAllowDownload(),
+                request.getAllowModify()
         );
         return Result.ok(updated);
+    }
+
+    /**
+     * Fork 设定集：克隆到当前用户，sourceSettingId 保留血统溯源。
+     * 需原设定 allowDownload=true。
+     */
+    @PostMapping("/{id}/fork")
+    public Result<SettingPackDO> fork(@PathVariable("id") String id,
+                                      @RequestHeader("X-User-Id") Long userId) {
+        return Result.ok(settingPackService.forkSetting(id, userId));
     }
 }
 

@@ -23,5 +23,11 @@ public class UpdateSettingRequest {
     private SettingContentDTO content;
 
     private String deviceHash;
+
+    /** 允许克隆下载（仅原创设定可修改） */
+    private Boolean allowDownload;
+
+    /** 允许二次修改（仅原创设定可修改） */
+    private Boolean allowModify;
 }
 
