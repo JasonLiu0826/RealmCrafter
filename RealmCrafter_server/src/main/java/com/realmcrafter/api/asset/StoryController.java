@@ -32,6 +32,13 @@ public class StoryController {
         return Result.ok(storyService.listByUser(userId, keyword, pageable));
     }
 
+    @GetMapping("/{id}")
+    public Result<StoryDO> getById(@PathVariable("id") String id,
+                                   @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        StoryDO story = storyService.getById(id, userId);
+        return Result.ok(story);
+    }
+
     @PostMapping
     public Result<StoryDO> create(@RequestBody @Valid CreateStoryRequest request) {
         StoryDO created = storyService.create(
@@ -56,6 +63,13 @@ public class StoryController {
                                          @RequestHeader("X-User-Id") Long userId) {
         StoryDO updated = storyService.updateReadTime(id, userId);
         return Result.ok(updated);
+    }
+
+    @PostMapping("/{id}/fork")
+    public Result<StoryDO> fork(@PathVariable("id") String sourceStoryId,
+                                @RequestHeader("X-User-Id") Long userId) {
+        StoryDO forked = storyService.forkStory(sourceStoryId, userId);
+        return Result.ok(forked);
     }
 
     @DeleteMapping("/{id}")

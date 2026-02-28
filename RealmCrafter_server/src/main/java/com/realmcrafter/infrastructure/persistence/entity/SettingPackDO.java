@@ -75,6 +75,15 @@ public class SettingPackDO {
     @Column(name = "simhash", length = 64)
     private String simhash;
 
+    @Column(name = "likes_count", nullable = false)
+    private Integer likesCount = 0;
+
+    @Column(name = "fork_count", nullable = false)
+    private Integer forkCount = 0;
+
+    @Column(name = "favorite_count", nullable = false)
+    private Integer favoriteCount = 0;
+
     @Column(name = "create_time", nullable = false, updatable = false)
     private LocalDateTime createTime;
 
