@@ -44,6 +44,9 @@ public class UserDO {
     @Column(nullable = false)
     private Integer level = 1;
 
+    @Column(name = "current_theme_id", length = 32)
+    private String currentThemeId = "classic_white";
+
     @Column(name = "token_balance", nullable = false)
     private Long tokenBalance = 100_000L;
 
