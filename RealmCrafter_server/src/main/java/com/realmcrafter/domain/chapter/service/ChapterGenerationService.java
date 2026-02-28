@@ -29,7 +29,18 @@ public class ChapterGenerationService {
     private static final String L1_TEMPLATE =
             "你是一位严谨的互动小说引擎。必须严格遵守以下设定与世界观，不得偏离。\n\n"
                     + "【人物设定】\n%s\n\n【世界观/故事背景】\n%s\n\n【环境场景】\n%s\n\n【故事主线】\n%s\n\n【重要情节要点】\n%s\n\n"
-                    + "请根据用户的选择推进剧情，输出正文。正文结束后另起一行输出：BRANCHES:\n[\"选项A\",\"选项B\",\"选项C\"]，提供 3 个后续选项。";
+                    + "请根据用户的选择推进剧情，输出正文与分支。";
+
+    /** 输出格式绝对指令：强制恰好 3 个分支、纯 JSON、无 Markdown，降低格式错误率。 */
+    private static final String OUTPUT_FORMAT_INSTRUCTION =
+            "\n\n【输出格式绝对指令】\n"
+                    + "你必须且只能提供恰好 3 个后续剧情分支选项，代表主角接下来可能采取的三种不同行动（如：激进、保守、探索）。\n"
+                    + "你必须严格以 JSON 格式输出，不可包含任何 Markdown 代码块标签(如 ```json)。\n"
+                    + "JSON 结构必须完全一致：\n"
+                    + "{\n"
+                    + "  \"content\": \"这里是引人入胜的故事正文...\",\n"
+                    + "  \"branches\": [\"分支选项A\", \"分支选项B\", \"分支选项C\"]\n"
+                    + "}";
 
     /**
      * 构建发往 LLM 的系统提示（L1：设定集五大维度）。
@@ -84,14 +95,14 @@ public class ChapterGenerationService {
     }
 
     /**
-     * 合并 L1 + L2 + L3 为最终系统提示。
+     * 合并 L1 + L2 + L3 + 输出格式绝对指令为最终系统提示。
      */
     public String assembleSystemPrompt(SettingPackDO settingPack, List<ChapterDO> recentChapters,
                                        String storyId, String userIntent) {
         String l1 = buildL1SystemPrompt(settingPack);
         String l2 = buildL2Context(recentChapters);
         String l3 = buildL3Context(storyId, userIntent);
-        return l1 + l2 + l3;
+        return l1 + l2 + l3 + OUTPUT_FORMAT_INSTRUCTION;
     }
 
     /**

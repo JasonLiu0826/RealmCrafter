@@ -2,10 +2,12 @@ package com.realmcrafter.domain.social.service;
 
 import com.realmcrafter.infrastructure.persistence.entity.AssetFavoriteDO;
 import com.realmcrafter.infrastructure.persistence.entity.AssetLikeDO;
+import com.realmcrafter.infrastructure.persistence.entity.CommentDO;
 import com.realmcrafter.infrastructure.persistence.entity.SettingPackDO;
 import com.realmcrafter.infrastructure.persistence.entity.StoryDO;
 import com.realmcrafter.infrastructure.persistence.repository.AssetLikeRepository;
 import com.realmcrafter.infrastructure.persistence.repository.AssetFavoriteRepository;
+import com.realmcrafter.infrastructure.persistence.repository.CommentRepository;
 import com.realmcrafter.infrastructure.persistence.repository.SettingPackRepository;
 import com.realmcrafter.infrastructure.persistence.repository.StoryRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,10 +25,11 @@ public class InteractionService {
     private final AssetFavoriteRepository assetFavoriteRepository;
     private final StoryRepository storyRepository;
     private final SettingPackRepository settingPackRepository;
+    private final CommentRepository commentRepository;
 
     @Transactional
     public boolean toggleLike(Long userId, String assetType, String assetId) {
-        AssetLikeDO.AssetType type = "SETTING".equalsIgnoreCase(assetType) ? AssetLikeDO.AssetType.SETTING : AssetLikeDO.AssetType.STORY;
+        AssetLikeDO.AssetType type = parseAssetType(assetType);
         var existing = assetLikeRepository.findByUserIdAndAssetTypeAndAssetId(userId, type, assetId);
         if (existing.isPresent()) {
             assetLikeRepository.delete(existing.get());
@@ -60,7 +63,26 @@ public class InteractionService {
         return true;
     }
 
+    private static AssetLikeDO.AssetType parseAssetType(String assetType) {
+        if (assetType == null) return AssetLikeDO.AssetType.STORY;
+        switch (assetType.toUpperCase()) {
+            case "SETTING": return AssetLikeDO.AssetType.SETTING;
+            case "COMMENT": return AssetLikeDO.AssetType.COMMENT;
+            default: return AssetLikeDO.AssetType.STORY;
+        }
+    }
+
     private void incrementLikes(AssetLikeDO.AssetType type, String assetId) {
+        if (type == AssetLikeDO.AssetType.COMMENT) {
+            try {
+                Long commentId = Long.parseLong(assetId);
+                commentRepository.findById(commentId).ifPresent(c -> {
+                    c.setLikesCount((c.getLikesCount() != null ? c.getLikesCount() : 0) + 1);
+                    commentRepository.save(c);
+                });
+            } catch (NumberFormatException ignored) { }
+            return;
+        }
         if (type == AssetLikeDO.AssetType.STORY) {
             storyRepository.findById(assetId).ifPresent(s -> {
                 s.setLikesCount((s.getLikesCount() != null ? s.getLikesCount() : 0) + 1);
@@ -75,6 +97,16 @@ public class InteractionService {
     }
 
     private void decrementLikes(AssetLikeDO.AssetType type, String assetId) {
+        if (type == AssetLikeDO.AssetType.COMMENT) {
+            try {
+                Long commentId = Long.parseLong(assetId);
+                commentRepository.findById(commentId).ifPresent(c -> {
+                    c.setLikesCount(Math.max(0, (c.getLikesCount() != null ? c.getLikesCount() : 0) - 1));
+                    commentRepository.save(c);
+                });
+            } catch (NumberFormatException ignored) { }
+            return;
+        }
         if (type == AssetLikeDO.AssetType.STORY) {
             storyRepository.findById(assetId).ifPresent(s -> {
                 s.setLikesCount(Math.max(0, (s.getLikesCount() != null ? s.getLikesCount() : 0) - 1));

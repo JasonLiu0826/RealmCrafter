@@ -1,0 +1,62 @@
+package com.realmcrafter.infrastructure.persistence.entity;
+
+import lombok.Getter;
+import lombok.Setter;
+
+import javax.persistence.*;
+import java.time.LocalDateTime;
+
+/**
+ * 系统通知：用于 @提及 等提醒。
+ */
+@Getter
+@Setter
+@Entity
+@Table(name = "system_notification", indexes = {
+        @Index(name = "idx_notification_user_unread", columnList = "user_id, is_read"),
+        @Index(name = "idx_notification_create_time", columnList = "create_time")
+})
+public class SystemNotificationDO {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type", nullable = false, length = 32)
+    private NotificationType type;
+
+    @Column(name = "title", length = 128)
+    private String title;
+
+    @Column(name = "body", columnDefinition = "text")
+    private String body;
+
+    /** 关联业务：如 comment_id、story_id 等，JSON 或 key */
+    @Column(name = "ref_type", length = 32)
+    private String refType;
+
+    @Column(name = "ref_id", length = 64)
+    private String refId;
+
+    @Column(name = "actor_user_id")
+    private Long actorUserId;
+
+    @Column(name = "is_read", nullable = false)
+    private Boolean isRead = false;
+
+    @Column(name = "create_time", nullable = false, updatable = false)
+    private LocalDateTime createTime;
+
+    @PrePersist
+    protected void onCreate() {
+        if (createTime == null) createTime = LocalDateTime.now();
+    }
+
+    public enum NotificationType {
+        MENTION
+    }
+}

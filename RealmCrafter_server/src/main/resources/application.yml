@@ -31,3 +31,6 @@ server:
 realmcrafter:
   billing:
     tokens-per-chapter: 5000
+  share:
+    # 站外深度链接根域名，用于生成 https://realmcrafter.app/s/{shortCode}
+    base-url: https://realmcrafter.app

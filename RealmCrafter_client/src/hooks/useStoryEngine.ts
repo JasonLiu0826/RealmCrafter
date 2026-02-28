@@ -1,8 +1,10 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { streamSSE } from '../services/StreamParser'
 
 const BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
+
+const TYPEWRITER_INTERVAL_MS = 40
 
 export interface GenerateStreamParams {
   storyId: string
@@ -13,14 +15,53 @@ export interface GenerateStreamParams {
 }
 
 /**
- * 封装章节流式生成与 StreamParser 逻辑，对外只暴露 textContent 与 isGenerating。
- * 供阅读器“打字机”等组件消费，不包含 UI 布局。
+ * 封装章节流式生成与打字机队列：textContent 为 SSE 物理流，displayedContent 为视觉流。
+ * 仅当 !isGenerating && !isTyping && branches.length === 3 时 showBranches 为 true，选项卡才渲染。
  */
 export function useStoryEngine() {
   const [textContent, setTextContent] = useState('')
+  const [displayedLength, setDisplayedLength] = useState(0)
   const [isGenerating, setIsGenerating] = useState(false)
   const [branches, setBranches] = useState<string[]>([])
   const [error, setError] = useState<Error | null>(null)
+
+  const targetContentRef = useRef(textContent)
+  targetContentRef.current = textContent
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const displayedContent = textContent.slice(0, displayedLength)
+  const isTyping = displayedLength < textContent.length
+  const showBranches = !isGenerating && !isTyping && branches.length === 3
+
+  useEffect(() => {
+    if (displayedLength >= textContent.length) {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+      return
+    }
+    if (intervalRef.current) return
+    intervalRef.current = setInterval(() => {
+      setDisplayedLength((prev) => {
+        const target = targetContentRef.current.length
+        if (prev >= target) {
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current)
+            intervalRef.current = null
+          }
+          return target
+        }
+        return prev + 1
+      })
+    }, TYPEWRITER_INTERVAL_MS)
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+  }, [textContent, displayedLength])
 
   const generate = useCallback(
     async (params: GenerateStreamParams) => {
@@ -28,6 +69,7 @@ export function useStoryEngine() {
       setError(null)
       setBranches([])
       setTextContent('')
+      setDisplayedLength(0)
       setIsGenerating(true)
 
       const url = `${BASE_URL}/api/v1/engine/generate/stream`
@@ -81,17 +123,24 @@ export function useStoryEngine() {
 
   const reset = useCallback(() => {
     setTextContent('')
+    setDisplayedLength(0)
     setBranches([])
     setError(null)
     setIsGenerating(false)
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
   }, [])
 
   return {
-    textContent,
-    isGenerating,
+    content: displayedContent,
     branches,
-    error,
+    showBranches,
+    isGenerating,
+    isTyping,
     generate,
     reset,
+    error,
   }
 }

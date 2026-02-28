@@ -21,8 +21,9 @@ import java.util.function.Consumer;
 
 /**
  * DeepSeek 流式客户端：SSE 连接第三方模型，维持与上游的流式转发。
- * 契约：系统提示中约定结尾输出 BRANCHES:\n["选项A","选项B","选项C"]，便于解析分支；
- * 不强制 API 层 json_object，以支持逐 token 的 content 流。
+ * 支持两种 LLM 输出格式：
+ * 1) 约定格式：正文流 + BRANCHES:\n["选项A","选项B","选项C"]；
+ * 2) 严格 JSON：{"content":"正文...","branches":["A","B","C"]}（与系统提示【输出格式绝对指令】一致）。
  */
 @Slf4j
 @Component
@@ -69,7 +70,9 @@ public class DeepSeekClient implements LlmClient {
         StringBuilder contentBuffer = new StringBuilder();
         StringBuilder slidingWindow = new StringBuilder(SLIDING_WINDOW_SIZE + 64);
         StringBuilder branchesBuffer = new StringBuilder();
+        StringBuilder jsonAccumulator = new StringBuilder();
         boolean inBranches = false;
+        boolean jsonMode = false;
         int bracketBalance = 0;
         Long[] totalTokens = { null };
 
@@ -105,6 +108,12 @@ public class DeepSeekClient implements LlmClient {
                         if (delta != null && delta.has("content")) {
                             String piece = delta.get("content").asText("");
                             if (piece.isEmpty()) continue;
+
+                            if (jsonMode || (contentBuffer.length() == 0 && piece.trim().startsWith("{"))) {
+                                jsonMode = true;
+                                jsonAccumulator.append(piece);
+                                continue;
+                            }
 
                             if (inBranches) {
                                 branchesBuffer.append(piece);
@@ -180,6 +189,36 @@ public class DeepSeekClient implements LlmClient {
                 List<String> branches = parseBranchesArray(branchesBuffer.toString());
                 if (!branches.isEmpty()) chunkConsumer.accept(StreamChunk.branches(branches));
             } catch (Exception ignored) {}
+        }
+
+        if (jsonMode && jsonAccumulator.length() > 0) {
+            try {
+                JsonNode obj = MAPPER.readTree(jsonAccumulator.toString());
+                if (obj.has("content") && obj.has("branches")) {
+                    String content = obj.get("content").asText("");
+                    if (!content.isEmpty()) {
+                        for (char c : content.toCharArray()) {
+                            slidingWindow.append(c);
+                            if (slidingWindow.length() >= SLIDING_WINDOW_SIZE) {
+                                String window = slidingWindow.toString();
+                                slidingWindow.delete(0, slidingWindow.length() - SLIDING_WINDOW_SIZE / 2);
+                                mockAsyncAudit(window, chunkConsumer);
+                            }
+                        }
+                        chunkConsumer.accept(StreamChunk.content(content));
+                    }
+                    JsonNode arr = obj.get("branches");
+                    if (arr.isArray()) {
+                        List<String> branches = new ArrayList<>();
+                        for (JsonNode n : arr) {
+                            if (n.isTextual()) branches.add(n.asText());
+                        }
+                        if (branches.size() == 3) chunkConsumer.accept(StreamChunk.branches(branches));
+                    }
+                }
+            } catch (Exception e) {
+                log.trace("JSON mode parse at end skip: {}", jsonAccumulator, e);
+            }
         }
 
         chunkConsumer.accept(StreamChunk.done());

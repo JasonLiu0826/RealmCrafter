@@ -41,6 +41,8 @@ public class AssetLikeDO {
 
     public enum AssetType {
         STORY,
-        SETTING
+        SETTING,
+        /** 评论点赞 */
+        COMMENT
     }
 }
