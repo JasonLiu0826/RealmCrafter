@@ -46,7 +46,8 @@ public class StoryController {
                 request.getSettingPackId(),
                 request.getTitle(),
                 request.getCover(),
-                request.getDescription()
+                request.getDescription(),
+                request.getPrice()
         );
         return Result.ok(created);
     }

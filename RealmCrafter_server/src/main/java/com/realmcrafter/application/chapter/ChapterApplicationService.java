@@ -3,6 +3,8 @@ package com.realmcrafter.application.chapter;
 import com.realmcrafter.domain.billing.InsufficientTokenException;
 import com.realmcrafter.domain.billing.strategy.BillingStrategy;
 import com.realmcrafter.domain.chapter.PurificationEngine;
+import com.realmcrafter.domain.user.ExpAction;
+import com.realmcrafter.domain.user.service.UserExpService;
 import com.realmcrafter.domain.chapter.service.ChapterGenerationService;
 import com.realmcrafter.infrastructure.llm.LlmClient;
 import com.realmcrafter.infrastructure.llm.dto.LlmStreamRequest;
@@ -44,6 +46,7 @@ public class ChapterApplicationService {
     private final StoryGenerationLock storyGenerationLock;
     private final List<BillingStrategy> billingStrategies;
     private final VectorMemoryService vectorMemoryService;
+    private final UserExpService userExpService;
 
     /**
      * 流式生成一章：前置校验 → 加锁 → 计费预扣 → 拼装 L1+L2 → 调用 LLM 流式输出 → 净化 → 回调 chunkConsumer（含 content/branches/done）。
@@ -129,6 +132,8 @@ public class ChapterApplicationService {
             storyRepository.save(story);
 
             vectorMemoryService.indexChapterChunks(storyId, chapter.getId() != null ? chapter.getId().longValue() : nextIndex, chapter.getContent());
+
+            userExpService.addExp(userId, ExpAction.READ_CONSUME);
 
             // 当前阶段使用预扣（beforeChapterGeneration）；后续可改为按 totalTokens 实际结算
         } finally {

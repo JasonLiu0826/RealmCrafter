@@ -1,5 +1,7 @@
 package com.realmcrafter.domain.social.service;
 
+import com.realmcrafter.domain.user.ExpAction;
+import com.realmcrafter.domain.user.service.UserExpService;
 import com.realmcrafter.infrastructure.persistence.entity.AssetFavoriteDO;
 import com.realmcrafter.infrastructure.persistence.entity.AssetLikeDO;
 import com.realmcrafter.infrastructure.persistence.entity.CommentDO;
@@ -14,6 +16,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Optional;
+
 /**
  * 社交互动：点赞/取消赞、收藏/取消收藏，幂等更新 DO 计数。
  */
@@ -26,6 +30,7 @@ public class InteractionService {
     private final StoryRepository storyRepository;
     private final SettingPackRepository settingPackRepository;
     private final CommentRepository commentRepository;
+    private final UserExpService userExpService;
 
     @Transactional
     public boolean toggleLike(Long userId, String assetType, String assetId) {
@@ -42,7 +47,25 @@ public class InteractionService {
         like.setAssetId(assetId);
         assetLikeRepository.save(like);
         incrementLikes(type, assetId);
+        resolveAssetOwnerId(type, assetId).ifPresent(ownerId -> userExpService.addExp(ownerId, ExpAction.BE_LIKED));
         return true;
+    }
+
+    private Optional<Long> resolveAssetOwnerId(AssetLikeDO.AssetType type, String assetId) {
+        if (type == AssetLikeDO.AssetType.STORY) {
+            return storyRepository.findById(assetId).map(StoryDO::getUserId);
+        }
+        if (type == AssetLikeDO.AssetType.SETTING) {
+            return settingPackRepository.findById(assetId).map(SettingPackDO::getUserId);
+        }
+        if (type == AssetLikeDO.AssetType.COMMENT) {
+            try {
+                return commentRepository.findById(Long.parseLong(assetId)).map(CommentDO::getUserId);
+            } catch (NumberFormatException e) {
+                return Optional.empty();
+            }
+        }
+        return Optional.empty();
     }
 
     @Transactional
@@ -60,7 +83,15 @@ public class InteractionService {
         fav.setAssetId(assetId);
         assetFavoriteRepository.save(fav);
         incrementFavorite(type, assetId);
+        resolveAssetOwnerIdForFavorite(type, assetId).ifPresent(ownerId -> userExpService.addExp(ownerId, ExpAction.BE_FAVORITED));
         return true;
+    }
+
+    private Optional<Long> resolveAssetOwnerIdForFavorite(AssetFavoriteDO.AssetType type, String assetId) {
+        if (type == AssetFavoriteDO.AssetType.STORY) {
+            return storyRepository.findById(assetId).map(StoryDO::getUserId);
+        }
+        return settingPackRepository.findById(assetId).map(SettingPackDO::getUserId);
     }
 
     private static AssetLikeDO.AssetType parseAssetType(String assetType) {

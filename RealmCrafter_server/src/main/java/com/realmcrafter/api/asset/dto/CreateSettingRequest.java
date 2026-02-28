@@ -5,6 +5,7 @@ import lombok.Data;
 
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
+import java.math.BigDecimal;
 
 @Data
 public class CreateSettingRequest {
@@ -26,5 +27,8 @@ public class CreateSettingRequest {
 
     /** 允许二次修改（Fork 副本是否可更新），默认 true */
     private Boolean allowModify = true;
+
+    /** 可选定价，受创作者等级上限约束 */
+    private BigDecimal price;
 }
 

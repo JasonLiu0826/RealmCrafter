@@ -57,6 +57,7 @@ public class SystemNotificationDO {
     }
 
     public enum NotificationType {
-        MENTION
+        MENTION,
+        LEVEL_UP
     }
 }

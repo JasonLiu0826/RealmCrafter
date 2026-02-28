@@ -42,7 +42,8 @@ public class SettingPackController {
                 request.getContent(),
                 request.getDeviceHash(),
                 request.getAllowDownload(),
-                request.getAllowModify()
+                request.getAllowModify(),
+                request.getPrice()
         );
         return Result.ok(created);
     }

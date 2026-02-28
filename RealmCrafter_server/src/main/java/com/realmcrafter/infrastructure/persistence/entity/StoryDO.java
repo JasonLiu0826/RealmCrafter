@@ -107,6 +107,10 @@ public class StoryDO {
     @Column(name = "favorite_count", nullable = false)
     private Integer favoriteCount = 0;
 
+    /** 流量权重（定时任务写库）：(likesCount + forkCount*2) * 创作者等级系数，用于广场 TRAFFIC 排序 */
+    @Column(name = "traffic_weight")
+    private Double trafficWeight;
+
     @Column(name = "create_time", nullable = false, updatable = false)
     private LocalDateTime createTime;
 

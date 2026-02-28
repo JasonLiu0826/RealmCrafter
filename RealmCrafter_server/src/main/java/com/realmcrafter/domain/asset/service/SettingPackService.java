@@ -2,10 +2,17 @@ package com.realmcrafter.domain.asset.service;
 
 import com.realmcrafter.config.SyncConflictException;
 import com.realmcrafter.domain.asset.dto.SettingContentDTO;
+import com.realmcrafter.domain.billing.CreatorPriceValidator;
+import com.realmcrafter.domain.user.ExpAction;
+import com.realmcrafter.domain.user.service.UserExpService;
 import com.realmcrafter.infrastructure.id.AssetIdGenerator;
 import com.realmcrafter.infrastructure.persistence.entity.SettingPackDO;
+import com.realmcrafter.infrastructure.persistence.entity.UserDO;
 import com.realmcrafter.infrastructure.persistence.repository.SettingPackRepository;
+import com.realmcrafter.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+
+import java.math.BigDecimal;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -20,6 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class SettingPackService {
 
     private final SettingPackRepository settingPackRepository;
+    private final UserRepository userRepository;
+    private final UserExpService userExpService;
 
     /**
      * 分页/列表获取当前用户的设定集。
@@ -51,7 +60,13 @@ public class SettingPackService {
     @Transactional
     public SettingPackDO create(Long userId, String title, String cover, String description,
                                 SettingContentDTO content, String deviceHash,
-                                Boolean allowDownload, Boolean allowModify) {
+                                Boolean allowDownload, Boolean allowModify, BigDecimal price) {
+        UserDO user = userRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("用户不存在"));
+        int level = user.getLevel() != null ? user.getLevel() : 1;
+        boolean isGolden = Boolean.TRUE.equals(user.getIsGoldenCreator());
+        BigDecimal effectivePrice = (price != null && price.compareTo(BigDecimal.ZERO) >= 0) ? price : BigDecimal.ZERO;
+        CreatorPriceValidator.validatePrice(level, isGolden, effectivePrice);
+
         String id = AssetIdGenerator.generateId("sd", userId);
 
         SettingPackDO pack = new SettingPackDO();
@@ -62,10 +77,13 @@ public class SettingPackService {
         pack.setDescription(description);
         pack.setContent(content);
         pack.setDeviceHash(deviceHash);
+        pack.setPrice(effectivePrice);
         pack.setAllowDownload(allowDownload != null ? allowDownload : true);
         pack.setAllowModify(allowModify != null ? allowModify : true);
 
-        return settingPackRepository.save(pack);
+        SettingPackDO saved = settingPackRepository.save(pack);
+        userExpService.addExp(userId, ExpAction.PUBLISH_SETTING);
+        return saved;
     }
 
     /**

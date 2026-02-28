@@ -1,5 +1,7 @@
 package com.realmcrafter.domain.social.service;
 
+import com.realmcrafter.domain.user.ExpAction;
+import com.realmcrafter.domain.user.service.UserExpService;
 import com.realmcrafter.infrastructure.persistence.entity.CommentDO;
 import com.realmcrafter.infrastructure.persistence.entity.UserDO;
 import com.realmcrafter.infrastructure.persistence.repository.CommentRepository;
@@ -32,6 +34,7 @@ public class CommentService {
     private final StoryRepository storyRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final UserExpService userExpService;
 
     /**
      * 发表评论或回复。若为回复则 parentCommentId 非空，并会更新父评论 replyCount；保存前解析 @username 发送提及通知。
@@ -75,8 +78,12 @@ public class CommentService {
         for (Long targetId : toNotify) {
             if (!targetId.equals(userId)) {
                 notificationService.sendMention(targetId, userId, "COMMENT", String.valueOf(comment.getId()), content.length() > 50 ? content.substring(0, 50) + "…" : content);
+                userExpService.addExp(targetId, ExpAction.BE_MENTIONED);
             }
         }
+
+        storyRepository.findById(storyId).ifPresent(story -> userExpService.addExp(story.getUserId(), ExpAction.BE_COMMENTED));
+        userExpService.addExp(userId, ExpAction.PUBLISH_COMMENT);
 
         return comment;
     }

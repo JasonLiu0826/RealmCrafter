@@ -24,23 +24,25 @@ public class SquareController {
 
     @GetMapping("/stories")
     public Result<Page<StoryDO>> listStories(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
             @RequestParam(defaultValue = "NEWEST") String sort,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        SquareService.SquareSort sortEnum = "HOT".equalsIgnoreCase(sort) ? SquareService.SquareSort.HOT : SquareService.SquareSort.NEWEST;
+        SquareService.SquareSort sortEnum = "TRAFFIC".equalsIgnoreCase(sort) ? SquareService.SquareSort.TRAFFIC : "HOT".equalsIgnoreCase(sort) ? SquareService.SquareSort.HOT : SquareService.SquareSort.NEWEST;
         Pageable pageable = PageRequest.of(page, size);
-        return Result.ok(squareService.listPublicStories(sortEnum, keyword, pageable));
+        return Result.ok(squareService.listPublicStories(sortEnum, keyword, pageable, userId));
     }
 
     @GetMapping("/settings")
     public Result<Page<SettingPackDO>> listSettings(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
             @RequestParam(defaultValue = "NEWEST") String sort,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         SquareService.SquareSort sortEnum = "HOT".equalsIgnoreCase(sort) ? SquareService.SquareSort.HOT : SquareService.SquareSort.NEWEST;
         Pageable pageable = PageRequest.of(page, size);
-        return Result.ok(squareService.listPublicSettings(sortEnum, keyword, pageable));
+        return Result.ok(squareService.listPublicSettings(sortEnum, keyword, pageable, userId));
     }
 }

@@ -41,8 +41,17 @@ public class UserDO {
     @Column(name = "age")
     private Integer age;
 
+    /** 创作者等级 1~5，用于分润与定价上限 */
     @Column(nullable = false)
     private Integer level = 1;
+
+    /** 经验值，用于等级跃迁 */
+    @Column(nullable = false)
+    private Long exp = 0L;
+
+    /** 金牌签约创作者，享受更高分润与流量系数 */
+    @Column(name = "is_golden_creator", nullable = false)
+    private Boolean isGoldenCreator = false;
 
     @Column(name = "current_theme_id", length = 32)
     private String currentThemeId = "classic_white";

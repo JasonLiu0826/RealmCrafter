@@ -1,7 +1,10 @@
 package com.realmcrafter.domain.social.service;
 
+import com.realmcrafter.domain.user.ExpAction;
+import com.realmcrafter.domain.user.service.UserExpService;
 import com.realmcrafter.infrastructure.persistence.entity.ShareRecordDO;
 import com.realmcrafter.infrastructure.persistence.repository.ShareRecordRepository;
+import com.realmcrafter.infrastructure.persistence.repository.StoryRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -26,6 +29,8 @@ public class ShareService {
     private String shareBaseUrl;
 
     private final ShareRecordRepository shareRecordRepository;
+    private final StoryRepository storyRepository;
+    private final UserExpService userExpService;
 
     /**
      * 生成分享记录，返回短链与站内转发卡片 payload（供消息模块发送 FORWARD_CARD）。
@@ -42,6 +47,8 @@ public class ShareService {
         record.setTargetRef(targetRef != null ? targetRef : "");
         record.setExcerpt(excerpt);
         shareRecordRepository.save(record);
+
+        storyRepository.findById(storyId).ifPresent(story -> userExpService.addExp(story.getUserId(), ExpAction.BE_SHARED));
 
         String deepLink = shareBaseUrl + "/s/" + shortCode;
         Map<String, Object> forwardCardPayload = Map.of(

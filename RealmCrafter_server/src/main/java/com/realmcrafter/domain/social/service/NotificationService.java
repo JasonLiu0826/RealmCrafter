@@ -28,4 +28,20 @@ public class NotificationService {
         n.setActorUserId(actorUserId);
         systemNotificationRepository.save(n);
     }
+
+    /**
+     * 发送创作者等级跃迁系统通知。
+     */
+    @Transactional
+    public void sendLevelUp(Long userId, int newLevel) {
+        if (userId == null) return;
+        SystemNotificationDO n = new SystemNotificationDO();
+        n.setUserId(userId);
+        n.setType(SystemNotificationDO.NotificationType.LEVEL_UP);
+        n.setTitle("创作者等级提升");
+        n.setBody("恭喜！您已晋升为 Lv" + newLevel + " 创作者");
+        n.setRefType("LEVEL");
+        n.setRefId(String.valueOf(newLevel));
+        systemNotificationRepository.save(n);
+    }
 }

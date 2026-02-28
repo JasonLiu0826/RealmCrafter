@@ -1,5 +1,9 @@
 package com.realmcrafter.domain.asset.service;
 
+import com.realmcrafter.domain.billing.CreatorPriceValidator;
+import com.realmcrafter.domain.billing.CreatorShareResolver;
+import com.realmcrafter.domain.user.ExpAction;
+import com.realmcrafter.domain.user.service.UserExpService;
 import com.realmcrafter.infrastructure.id.AssetIdGenerator;
 import com.realmcrafter.infrastructure.persistence.entity.ChapterDO;
 import com.realmcrafter.infrastructure.persistence.entity.SettingPackDO;
@@ -29,14 +33,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class StoryService {
 
-    private static final BigDecimal CREATOR_SHARE = new BigDecimal("0.70");
-
     private final StoryRepository storyRepository;
     private final SettingPackRepository settingPackRepository;
     private final SettingPackService settingPackService;
     private final ChapterRepository chapterRepository;
     private final UserRepository userRepository;
     private final WalletTransactionRepository walletTransactionRepository;
+    private final UserExpService userExpService;
 
     @Transactional(readOnly = true)
     public StoryDO getById(String id, Long userId) {
@@ -68,12 +71,19 @@ public class StoryService {
                           String settingPackId,
                           String title,
                           String cover,
-                          String description) {
+                          String description,
+                          BigDecimal price) {
         SettingPackDO settingPack = settingPackRepository.findById(settingPackId)
                 .orElseThrow(() -> new IllegalArgumentException("关联设定集不存在"));
         if (!settingPack.getUserId().equals(userId)) {
             throw new IllegalArgumentException("设定集不属于当前用户，无法创建故事");
         }
+
+        UserDO user = userRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("用户不存在"));
+        int level = user.getLevel() != null ? user.getLevel() : 1;
+        boolean isGolden = Boolean.TRUE.equals(user.getIsGoldenCreator());
+        BigDecimal effectivePrice = (price != null && price.compareTo(BigDecimal.ZERO) >= 0) ? price : BigDecimal.ZERO;
+        CreatorPriceValidator.validatePrice(level, isGolden, effectivePrice);
 
         String id = AssetIdGenerator.generateId("gs", userId);
 
@@ -84,10 +94,13 @@ public class StoryService {
         story.setTitle(title);
         story.setCover(cover);
         story.setDescription(description);
+        story.setPrice(effectivePrice);
         story.setStatus(StoryDO.Status.NORMAL);
         story.setLastChapterIndex(0);
 
-        return storyRepository.save(story);
+        StoryDO saved = storyRepository.save(story);
+        userExpService.addExp(userId, ExpAction.PUBLISH_STORY);
+        return saved;
     }
 
     @Transactional
@@ -155,6 +168,11 @@ public class StoryService {
         }
 
         BigDecimal price = original.getPrice() != null ? original.getPrice() : BigDecimal.ZERO;
+        UserDO author = userRepository.findById(original.getUserId()).orElse(null);
+        int authorLevel = author != null && author.getLevel() != null ? author.getLevel() : 1;
+        boolean authorGolden = author != null && Boolean.TRUE.equals(author.getIsGoldenCreator());
+        BigDecimal creatorShare = CreatorShareResolver.authorShareRatio(authorLevel, authorGolden);
+
         if (price.compareTo(BigDecimal.ZERO) > 0) {
             UserDO forkUser = userRepository.findById(forkUserId)
                     .orElseThrow(() -> new IllegalArgumentException("用户不存在"));
@@ -165,8 +183,7 @@ public class StoryService {
             forkUser.setCrystalBalance(balance.subtract(price));
             userRepository.save(forkUser);
 
-            BigDecimal creatorAmount = price.multiply(CREATOR_SHARE).setScale(2, RoundingMode.HALF_UP);
-            UserDO author = userRepository.findById(original.getUserId()).orElse(null);
+            BigDecimal creatorAmount = price.multiply(creatorShare).setScale(2, RoundingMode.HALF_UP);
             if (author != null) {
                 BigDecimal authorBalance = author.getCrystalBalance() != null ? author.getCrystalBalance() : BigDecimal.ZERO;
                 author.setCrystalBalance(authorBalance.add(creatorAmount));
@@ -177,8 +194,14 @@ public class StoryService {
                 tx.setType(WalletTransactionDO.Type.CREATOR_REVENUE);
                 tx.setDescription("Fork 分润：故事 " + sourceStoryId + " 被 Fork");
                 walletTransactionRepository.save(tx);
+                userExpService.addExp(original.getUserId(), ExpAction.BE_BOUGHT);
+            }
+        } else {
+            if (author != null) {
+                userExpService.addExp(original.getUserId(), ExpAction.BE_FORKED);
             }
         }
+        userExpService.addExp(forkUserId, ExpAction.FORK_ASSET);
 
         // 设定集联动：三重校验防越权，任一不满足则降级为云端引用
         boolean storyAllowDownload = original.getAllowDownload() != null && original.getAllowDownload();
