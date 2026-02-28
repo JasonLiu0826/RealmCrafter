@@ -27,6 +27,30 @@ public class UserDO {
     @Column(nullable = false, length = 255)
     private String password;
 
+    /** 手机号（用于验证码登录） */
+    @Column(length = 20, unique = true)
+    private String phone;
+
+    /** 微信 OpenID（一键登录） */
+    @Column(name = "wechat_open_id", length = 64, unique = true)
+    private String wechatOpenId;
+
+    /** 苹果登录唯一标识 */
+    @Column(name = "apple_id", length = 128, unique = true)
+    private String appleId;
+
+    /** 昵称 */
+    @Column(length = 64)
+    private String nickname;
+
+    /** 个人签名 */
+    @Column(length = 256)
+    private String signature;
+
+    /** 封禁截止时间，NULL 表示未封禁 */
+    @Column(name = "sealed_until")
+    private LocalDateTime sealedUntil;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private UserRole role = UserRole.USER;

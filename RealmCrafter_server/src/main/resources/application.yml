@@ -34,3 +34,11 @@ realmcrafter:
   share:
     # 站外深度链接根域名，用于生成 https://realmcrafter.app/s/{shortCode}
     base-url: https://realmcrafter.app
+  # JWT：生产环境务必更换 secret（至少 32 字节）
+  jwt:
+    secret: RealmCrafterDefaultSecretKeyForDevOnly32Bytes!!
+    expiration-ms: 604800000
+  # 上传：本地目录或 OSS 配置，见 ObjectStorageService 实现
+  upload:
+    base-dir: uploads
+    base-url: http://localhost:8080/api/v1/upload/files

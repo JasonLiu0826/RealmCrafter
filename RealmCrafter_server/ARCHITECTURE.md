@@ -75,12 +75,35 @@ com.realmcrafter
 │   │       └── UpdateThemeRequest.java
 │   ├── heartbeat/
 │   │   └── HeartbeatController.java           # 生成前心跳（广告触发）
-│   └── ad/
-│       ├── AdController.java                  # 广告观看完成回调
-│       └── dto/
-│           └── AdCallbackRequest.java
+│   ├── ad/
+│   │   ├── AdController.java                  # 广告观看完成回调
+│   │   └── dto/
+│   │       └── AdCallbackRequest.java
+│   ├── auth/
+│   │   ├── AuthController.java                # 注册、登录、资料
+│   │   └── dto/
+│   │       ├── RegisterRequest.java
+│   │       ├── LoginRequest.java
+│   │       ├── PhoneLoginRequest.java
+│   │       ├── WechatLoginRequest.java
+│   │       ├── AppleLoginRequest.java
+│   │       └── UpdateProfileRequest.java
+│   ├── upload/
+│   │   └── UploadController.java             # 图片上传
+│   ├── admin/
+│   │   └── AdminController.java              # 封禁、下架、金牌创作者
+│   └── payment/
+│       └── PaymentController.java            # 支付回调（微信/支付宝/苹果）
 │
 ├── application/                               # 应用服务（编排领域 + 基础设施）
+│   ├── auth/
+│   │   ├── AuthService.java
+│   │   ├── AuthResult.java
+│   │   └── UserProfileDTO.java
+│   ├── admin/
+│   │   └── AdminService.java
+│   ├── payment/
+│   │   └── PaymentCallbackService.java
 │   ├── chapter/
 │   │   └── ChapterApplicationService.java     # 章节流式生成编排
 │   ├── user/
@@ -89,9 +112,16 @@ com.realmcrafter
 │       └── HeartbeatService.java             # 心跳逻辑（计费策略 + 广告触发）
 │
 ├── config/                                    # 全局配置与异常
+│   ├── SecurityConfig.java                   # JWT 过滤、放行 auth/payment/share/decode/upload/files
+│   ├── PasswordEncoderConfig.java            # BCrypt
+│   ├── WebMvcConfig.java                     # 上传文件静态资源映射
 │   ├── GlobalExceptionHandler.java           # 统一异常 -> Result
 │   ├── SyncConflictException.java            # 409 同步冲突
 │   └── ContentViolationException.java        # 内容违规（LLM 净化中断）
+│
+├── security/                                  # 鉴权
+│   ├── JwtService.java                       # JWT 签发与解析
+│   └── JwtAuthFilter.java                    # Bearer / X-User-Id -> SecurityContext
 │
 ├── domain/                                    # 领域层
 │   ├── asset/
@@ -146,7 +176,11 @@ com.realmcrafter
 │   │       └── StreamChunk.java
 │   ├── redis/
 │   │   ├── StoryGenerationLock.java          # 故事级生成锁
-│   │   └── AdCounterCache.java                # 广告计数缓存
+│   │   ├── AdCounterCache.java                # 广告计数缓存
+│   │   └── AdWatchTokenService.java           # 广告一次性令牌与 ad:watched
+│   ├── storage/
+│   │   ├── ObjectStorageService.java         # 对象存储抽象
+│   │   └── LocalObjectStorageService.java    # 本地磁盘实现（可换 OSS/COS/S3）
 │   ├── vector/
 │   │   ├── VectorMemoryService.java          # RAG/L3 记忆
 │   │   └── MockVectorService.java
@@ -288,6 +322,49 @@ com.realmcrafter
 | 方法 | 完整路径 | 说明 | 请求 | 响应 |
 |------|----------|------|------|------|
 | POST | `/api/v1/ad/callback` | 广告观看完成回调 | Body: `AdCallbackRequest`（**adToken**，来自 451 响应） | 核销令牌并设置 ad:watched，下次心跳可继续生成；无效/过期 token：400 |
+
+---
+
+### 3.13 鉴权与用户资料 — `/api/v1/auth`
+
+| 方法 | 完整路径 | 说明 | 请求 | 响应 |
+|------|----------|------|------|------|
+| POST | `/api/v1/auth/register` | 注册 | Body: username, password, nickname?, signature? | `userId`, `token`, `profile` |
+| POST | `/api/v1/auth/login` | 账号密码登录 | Body: username, password | `userId`, `token`, `profile` |
+| POST | `/api/v1/auth/phone-login` | 手机验证码登录（桩：任意 6 位） | Body: phone, code | 同上 |
+| POST | `/api/v1/auth/wechat-login` | 微信一键登录（传 openId） | Body: openId | 同上 |
+| POST | `/api/v1/auth/apple-login` | 苹果登录（传 appleId） | Body: appleId | 同上 |
+| GET | `/api/v1/auth/profile` | 当前用户资料（需鉴权） | Header: Authorization Bearer 或 X-User-Id | `UserProfileDTO` |
+| PATCH | `/api/v1/auth/profile` | 更新昵称/签名/头像（需鉴权） | Body: nickname?, signature?, avatar? | `UserProfileDTO` |
+
+---
+
+### 3.14 图片上传 — `/api/v1/upload`
+
+| 方法 | 完整路径 | 说明 | 请求 | 响应 |
+|------|----------|------|------|------|
+| POST | `/api/v1/upload/image` | 上传图片（封面/头像） | Multipart: file（≤5MB，PNG/JPG/GIF/WebP） | `{ "url": "https://..." }` |
+| GET | `/api/v1/upload/files/**` | 访问已上传文件（公开） | 路径 | 静态文件 |
+
+---
+
+### 3.15 管理后台 — `/api/v1/admin`（仅 ADMIN/SUPER_ADMIN）
+
+| 方法 | 完整路径 | 说明 | 请求 | 响应 |
+|------|----------|------|------|------|
+| POST | `/api/v1/admin/seal-user` | 封禁用户 | Query: userId, sealedUntil?（ISO 时间，空则长期） | 200 |
+| POST | `/api/v1/admin/take-down-story` | 强制下架故事 | Query: storyId | 200 |
+| POST | `/api/v1/admin/grant-golden-creator` | 授予金牌创作者 | Query: userId | 200 |
+
+---
+
+### 3.16 支付回调 — `/api/v1/payment`（公开，供渠道回调）
+
+| 方法 | 完整路径 | 说明 | 请求 | 响应 |
+|------|----------|------|------|------|
+| POST | `/api/v1/payment/wechat/callback` | 微信支付回调（桩：body 含 userId, amount, orderId） | JSON | `{ "code": "SUCCESS" \| "FAIL", "message"?: string }` |
+| POST | `/api/v1/payment/alipay/callback` | 支付宝回调 | 同上 | 同上 |
+| POST | `/api/v1/payment/apple/callback` | 苹果 IAP 回调（桩：userId, transactionId, productId；vip 产品续期） | JSON | 同上 |
 
 ---
 
@@ -468,6 +545,8 @@ com.realmcrafter
 | V7__add_creator_exp_and_level.sql | 创作者经验与等级 |
 | V8__add_story_traffic_weight.sql | 故事 traffic_weight 字段 |
 | V9__add_message_tables.sql | message、message_session 表及索引 |
+| V10__add_story_traffic_weight_index.sql | 广场 TRAFFIC 排序用 traffic_weight 索引 |
+| V11__add_auth_admin_payment.sql | 用户 phone/wechat_open_id/apple_id/nickname/signature/sealed_until；流水 external_order_id；故事 TAKEN_DOWN |
 
 ---
 
@@ -483,6 +562,10 @@ com.realmcrafter
 - **用户**：引擎配置（混沌度、模型）、主题切换（含 VIP）、经验与等级。  
 - **心跳**：生成前心跳、计费策略与广告触发（451，响应含 adToken）。  
 - **广告回调**：POST /api/v1/ad/callback 核销 adToken，标记已观看，下次心跳放行。  
+- **鉴权**：JWT 签发与校验、注册/登录（账号密码、手机验证码、微信、苹果）、资料获取与更新（昵称、签名、头像）。  
+- **上传**：POST /api/v1/upload/image 图片上传，返回可访问 URL（本地存储，可替换为 OSS/COS/S3）。  
+- **管理后台**：POST /api/v1/admin/seal-user、take-down-story、grant-golden-creator（仅 ADMIN/SUPER_ADMIN）。  
+- **支付回调**：POST /api/v1/payment/wechat/callback、alipay/callback、apple/callback，验签后加水晶/续 VIP（幂等）。  
 - **全局**：统一 Result、异常码（409/402/451/400/500）、敏感词与内容净化。  
 
 ---
@@ -494,5 +577,20 @@ com.realmcrafter
 - **购买与分润**：当前购买通过「Fork 故事/设定集」完成扣款与分润；独立「购买作品」接口可按需在后续迭代补充。  
 - **索引**：V6 已包含 comment 的 `(story_id, chapter_id, target_type, target_ref)` 与 `root_comment_id` 索引；广场 TRAFFIC 排序若需可对 `story.traffic_weight` 增加索引（见迁移脚本）。  
 - **后续建议**：RAG 延迟可加本地缓存；流式内容可考虑「先审后发」缓冲；私信可考虑 WebSocket 实时推送；广告计数间隔（如每 10 章）建议可配置化。
+
+---
+
+## 十四、V2.0 技术债（日活过万后升级）
+
+以下为预留升级点，当前未实现，待业务量上来后再做：
+
+| 项 | 说明 | 建议落地 |
+|----|------|----------|
+| **L3 真实向量** | 当前 MockVectorService 内存切片 | 接入 Milvus 或 PostgreSQL pgvector，约半小时可替换 |
+| **WebSocket 实时私信** | 当前私信/通知为 HTTP 拉取 | 接入 WebSocket，对方发消息时服务端推送，红点实时亮起 |
+| **敏感词缓冲流** | 当前边吐字边审核，违规句可能先闪屏再熔断（Glitch） | 在 StreamParser 前加约 50 字延迟 Buffer，先审后发 |
+| **RAG 缓存** | 向量检索延迟可能 &gt;500ms | 对热门章节做本地缓存（如 Caffeine）或预加载 |
+| **流式先审后发** | 同上，合规更严时可改为整段审核后再推前端 | 与敏感词缓冲统一改造 |
+| **广告间隔可配置** | 当前固定每 10 章触发广告 | 增加「间隔几章触发」配置项及管理端/接口可修改 |
 
 以上为 RealmCrafter 后端 Server 的完整架构、功能逻辑关系、详细路径与接口说明；具体字段与枚举以源码和迁移脚本为准。

@@ -14,6 +14,12 @@ public interface UserRepository extends JpaRepository<UserDO, Long> {
 
     boolean existsByUsername(String username);
 
+    Optional<UserDO> findByPhone(String phone);
+
+    Optional<UserDO> findByWechatOpenId(String wechatOpenId);
+
+    Optional<UserDO> findByAppleId(String appleId);
+
     /**
      * 原子扣减用户 Token 余额：仅当余额 ≥ amount 时更新，返回影响行数（0 或 1）。
      * 用于免费用户章节生成前扣费，避免并发超扣。

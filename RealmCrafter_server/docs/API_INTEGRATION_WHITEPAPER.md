@@ -15,9 +15,10 @@
 
 ### 1.2 鉴权
 
-- 需登录的接口在请求头中携带 **`X-User-Id`**（当前用户 ID，Long）。
-- 可由网关在鉴权后从 JWT 解析并注入，或由前端在登录后写入。
-- 未传或无效时，部分接口返回 400，SSE 生成接口会直接报错。
+- **推荐**：请求头 **`Authorization: Bearer <token>`**，其中 `token` 由登录/注册接口返回。
+- **兼容**：请求头 **`X-User-Id`**（当前用户 ID）仍可用，供网关注入或开发联调。
+- 未传或无效时，部分接口返回 401/400，SSE 生成接口会直接报错。
+- 公开接口（无需登录）：`/api/v1/auth/**`、`/api/v1/payment/**`、`/api/v1/share/decode/**`、`/api/v1/upload/files/**`。
 
 ### 1.3 统一响应体 `Result<T>`
 
@@ -261,6 +262,50 @@
 
 ---
 
+### 3.12 鉴权与资料 — `/api/v1/auth`
+
+| 方法 | 路径 | 说明 | 请求 | 响应 data |
+|------|------|------|------|-----------|
+| POST | `/api/v1/auth/register` | 注册 | Body: username, password, nickname?, signature? | `userId`, `token`, `profile` |
+| POST | `/api/v1/auth/login` | 账号密码登录 | Body: username, password | 同上 |
+| POST | `/api/v1/auth/phone-login` | 手机验证码登录 | Body: phone, code（6 位） | 同上 |
+| POST | `/api/v1/auth/wechat-login` | 微信登录 | Body: openId | 同上 |
+| POST | `/api/v1/auth/apple-login` | 苹果登录 | Body: appleId | 同上 |
+| GET | `/api/v1/auth/profile` | 当前用户资料 | 需鉴权 | `UserProfileDTO` |
+| PATCH | `/api/v1/auth/profile` | 更新昵称/签名/头像 | Body: nickname?, signature?, avatar? | `UserProfileDTO` |
+
+登录/注册成功时 `data` 含 `token`，后续请求带 `Authorization: Bearer <token>`。`profile` 含 `userId`, `username`, `role`, `nickname`, `signature`, `avatar`, `level`, `exp`, `isGoldenCreator`, `vipExpireTime`, `tokenBalance`, `crystalBalance`。
+
+---
+
+### 3.13 图片上传 — `/api/v1/upload`
+
+| 方法 | 路径 | 说明 | 请求 | 响应 data |
+|------|------|------|------|-----------|
+| POST | `/api/v1/upload/image` | 上传图片（封面/头像） | Multipart: **file**（≤5MB，PNG/JPG/GIF/WebP）；需鉴权 | `{ "url": "https://..." }` |
+
+上传成功后用返回的 `url` 填到故事/设定集封面或用户头像字段。
+
+---
+
+### 3.14 管理后台 — `/api/v1/admin`（仅 ADMIN/SUPER_ADMIN）
+
+| 方法 | 路径 | 说明 | 请求 | 响应 |
+|------|------|------|------|------|
+| POST | `/api/v1/admin/seal-user` | 封禁用户 | Query: userId, sealedUntil?（ISO 日期时间） | 200 |
+| POST | `/api/v1/admin/take-down-story` | 强制下架故事 | Query: storyId | 200 |
+| POST | `/api/v1/admin/grant-golden-creator` | 授予金牌创作者 | Query: userId | 200 |
+
+需管理员登录后带 Bearer token 调用；非管理员返回 403。
+
+---
+
+### 3.15 支付回调 — `/api/v1/payment`
+
+支付渠道回调（微信/支付宝/苹果）由服务端与渠道配置，前端无需直接调用。回调验签后服务端加水晶或续 VIP。
+
+---
+
 ## 四、SSE 流式生成
 
 ### 4.1 接口与请求
@@ -407,7 +452,7 @@ while (true) {
 
 ## 七、联调检查清单
 
-- [ ] 所有需登录接口均带 `X-User-Id`。
+- [ ] 需登录接口带 `Authorization: Bearer <token>`（或兼容 `X-User-Id`）。
 - [ ] 成功判断以 `code === 0` 为准，HTTP 状态仅作参考（451 为业务态）。
 - [ ] 分页列表使用 `data.content`、`data.totalElements`、`data.number`、`data.size`。
 - [ ] 生成章节前先心跳；遇 451 先展示广告 → callback → 再心跳 → 再 SSE 生成。
@@ -415,6 +460,8 @@ while (true) {
 - [ ] 设定集更新带 `versionId`；收到 409 做冲突/合并处理。
 - [ ] 分享：外链用 `deepLink`；站内卡片用 `forwardCardPayload` + 私信 `FORWARD_CARD`。
 - [ ] 402 引导广告/充值；400 展示 `message` 做参数校验提示。
+- [ ] 登录/注册后保存 `token`，请求头带 `Authorization: Bearer <token>`。
+- [ ] 封面/头像先调 `POST /api/v1/upload/image` 拿到 `url` 再提交故事/设定/资料。
 
 ---
 

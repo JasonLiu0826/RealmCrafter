@@ -130,6 +130,6 @@ public class StoryDO {
     }
 
     public enum Status {
-        NORMAL, DELETED
+        NORMAL, DELETED, TAKEN_DOWN
     }
 }

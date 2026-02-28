@@ -37,6 +37,10 @@ public class WalletTransactionDO {
     @Column(length = 255)
     private String description;
 
+    /** 支付渠道订单号，回调幂等防重复入账 */
+    @Column(name = "external_order_id", length = 128, unique = true)
+    private String externalOrderId;
+
     @Column(name = "create_time", nullable = false, updatable = false)
     private LocalDateTime createTime;
 
