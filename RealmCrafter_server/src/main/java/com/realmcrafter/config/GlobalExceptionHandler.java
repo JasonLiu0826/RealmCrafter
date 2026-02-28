@@ -3,9 +3,13 @@ package com.realmcrafter.config;
 import com.realmcrafter.api.dto.Result;
 import com.realmcrafter.domain.billing.AdTriggerRequiredException;
 import com.realmcrafter.domain.billing.InsufficientTokenException;
+import com.realmcrafter.infrastructure.redis.AdWatchTokenService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -13,6 +17,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import javax.servlet.http.HttpServletRequest;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -21,6 +26,7 @@ import java.util.Map;
  */
 @Slf4j
 @RestControllerAdvice
+@RequiredArgsConstructor
 public class GlobalExceptionHandler {
 
     /** 同步冲突业务码，便于前端识别并展示合并面板 */
@@ -29,15 +35,38 @@ public class GlobalExceptionHandler {
     /** 广告触发业务码 451，前端据此调起插屏 */
     public static final int CODE_AD_TRIGGER = 451;
 
+    private final AdWatchTokenService adWatchTokenService;
+
     @ExceptionHandler(AdTriggerRequiredException.class)
     public ResponseEntity<Result<Map<String, Object>>> handleAdTrigger(AdTriggerRequiredException e, HttpServletRequest request) {
         log.debug("AD_TRIGGER: uri={}", request.getRequestURI());
+        Map<String, Object> data = new HashMap<>();
+        data.put("needAd", true);
+        Long userId = resolveCurrentUserId();
+        if (userId != null) {
+            String adToken = adWatchTokenService.createToken(userId);
+            data.put("adToken", adToken);
+        }
         Result<Map<String, Object>> body = Result.<Map<String, Object>>builder()
                 .code(CODE_AD_TRIGGER)
                 .message("AD_TRIGGER")
-                .data(Map.of("needAd", true))
+                .data(data)
                 .build();
         return ResponseEntity.status(HttpStatus.UNAVAILABLE_FOR_LEGAL_REASONS).body(body);
+    }
+
+    private static Long resolveCurrentUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) return null;
+        Object principal = auth.getPrincipal();
+        if (principal instanceof Long) return (Long) principal;
+        if (principal instanceof String) {
+            try { return Long.parseLong((String) principal); } catch (NumberFormatException ignored) { return null; }
+        }
+        try {
+            Object id = principal.getClass().getMethod("getId").invoke(principal);
+            return id instanceof Long ? (Long) id : null;
+        } catch (Exception ignored) { return null; }
     }
 
     @ExceptionHandler(SyncConflictException.class)

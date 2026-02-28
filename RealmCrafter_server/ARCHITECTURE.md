@@ -1,6 +1,7 @@
 # RealmCrafter 后端 Server 架构与接口说明
 
-> 基于对 `RealmCrafter_server` 的完整遍历整理，包含架构、功能逻辑关系、详细路径、各层实现及全部接口信息，便于后续开发与扩展。
+> 基于对 `RealmCrafter_server` 的完整遍历整理，包含架构、功能逻辑关系、详细路径、各层实现及全部接口信息，便于后续开发与扩展。  
+> **前端/客户端联调**：参见 [《全栈 API 联调白皮书》](docs/API_INTEGRATION_WHITEPAPER.md)。
 
 ---
 
@@ -72,8 +73,12 @@ com.realmcrafter
 │   │       ├── EngineConfigDTO.java
 │   │       ├── UpdateEngineConfigRequest.java
 │   │       └── UpdateThemeRequest.java
-│   └── heartbeat/
-│       └── HeartbeatController.java           # 生成前心跳（广告触发）
+│   ├── heartbeat/
+│   │   └── HeartbeatController.java           # 生成前心跳（广告触发）
+│   └── ad/
+│       ├── AdController.java                  # 广告观看完成回调
+│       └── dto/
+│           └── AdCallbackRequest.java
 │
 ├── application/                               # 应用服务（编排领域 + 基础设施）
 │   ├── chapter/
@@ -274,7 +279,15 @@ com.realmcrafter
 
 | 方法 | 完整路径 | 说明 | 请求 | 响应 |
 |------|----------|------|------|------|
-| POST | `/api/v1/heartbeat/chapter-generate` | 生成章节前心跳 | 用户从 Security 上下文解析；计费策略更新互动计数，满足条件时返回 **HTTP 451** + `code=451`, `data.needAd=true` | 正常：200；需广告：451，前端据此拉广告 |
+| POST | `/api/v1/heartbeat/chapter-generate` | 生成章节前心跳 | 用户从 Security 上下文解析；计费策略更新互动计数，满足条件时返回 **HTTP 451** + `code=451`, `data.needAd=true`, `data.adToken`（一次性令牌） | 正常：200；需广告：451，前端展示广告后携带 adToken 调 **广告回调** |
+
+---
+
+### 3.12 广告 — `/api/v1/ad`
+
+| 方法 | 完整路径 | 说明 | 请求 | 响应 |
+|------|----------|------|------|------|
+| POST | `/api/v1/ad/callback` | 广告观看完成回调 | Body: `AdCallbackRequest`（**adToken**，来自 451 响应） | 核销令牌并设置 ad:watched，下次心跳可继续生成；无效/过期 token：400 |
 
 ---
 
@@ -284,7 +297,7 @@ com.realmcrafter
 
 | 异常 | HTTP 状态 | code | 说明 |
 |------|------------|------|------|
-| AdTriggerRequiredException | 451 | 451 | 需插屏广告，`data.needAd=true` |
+| AdTriggerRequiredException | 451 | 451 | 需插屏广告，`data.needAd=true`、`data.adToken`（一次性令牌，供 /ad/callback 核销） |
 | SyncConflictException | 409 | 409 | 同步冲突（如乐观锁），前端可做合并/冲突页 |
 | InsufficientTokenException | 402 | 402 | 灵能水晶/Token 不足 |
 | IllegalArgumentException | 400 | 400 | 参数或业务校验失败 |
@@ -311,8 +324,8 @@ com.realmcrafter
 | 组件 | 路径 | 说明 |
 |------|------|------|
 | **BillingStrategy** | domain/billing/strategy/BillingStrategy.java | 接口：`beforeChapterGeneration(UserDO)`，预扣或计数，可抛 AdTriggerRequiredException |
-| **FreeUserBillingStrategy** | domain/billing/strategy/FreeUserBillingStrategy.java | 扣平台 Token（tokens-per-chapter） |
-| **ByokUserBillingStrategy** | domain/billing/strategy/ByokUserBillingStrategy.java | 不扣 Token，只做互动计数与广告触发判断 |
+| **FreeUserBillingStrategy** | domain/billing/strategy/FreeUserBillingStrategy.java | 原子扣平台 Token（UserRepository.deductTokenBalance），防并发超扣 |
+| **ByokUserBillingStrategy** | domain/billing/strategy/ByokUserBillingStrategy.java | 不扣 Token，只做互动计数与广告触发判断；若已通过 /ad/callback 核销则本次不抛 451 |
 | **CreatorPriceValidator** | domain/billing/CreatorPriceValidator.java | 按用户等级/是否黄金创作者校验故事定价 |
 | **CreatorShareResolver** | domain/billing/CreatorShareResolver.java | 作者分润比例（等级/黄金创作者） |
 | **VipValidator / VipRenewalService** | domain/billing/service/ | VIP 有效期校验与续期；主题切换时校验 VIP 主题权限 |
@@ -434,7 +447,8 @@ com.realmcrafter
     │
     ├─ GET/PATCH /api/v1/users/me/* ───────────► UserConfigController / UserPreferenceController ──► ThemeApplicationService (VIP 校验)
     │
-    └─ POST /api/v1/heartbeat/chapter-generate ► HeartbeatController ──► HeartbeatService ──► BillingStrategy (可 451)
+    ├─ POST /api/v1/heartbeat/chapter-generate ► HeartbeatController ──► HeartbeatService ──► BillingStrategy (可 451，带 adToken)
+    └─ POST /api/v1/ad/callback ───────────────► AdController ──► AdWatchTokenService（核销 adToken，设置 ad:watched）
 ```
 
 - **经验与等级**：UserExpService 被 Story（Fork）、Setting、Comment、Interaction、Share、Chapter（生成）、Square（访问）等调用；升级时 NotificationService.sendLevelUp。
@@ -467,7 +481,18 @@ com.realmcrafter
 - **通知**：分页列表（按类型）、单条/全部已读；Fork 时 REWARD 通知。  
 - **私信**：发送（TEXT/FORWARD_CARD）、会话列表、与某人聊天记录。  
 - **用户**：引擎配置（混沌度、模型）、主题切换（含 VIP）、经验与等级。  
-- **心跳**：生成前心跳、计费策略与广告触发（451）。  
+- **心跳**：生成前心跳、计费策略与广告触发（451，响应含 adToken）。  
+- **广告回调**：POST /api/v1/ad/callback 核销 adToken，标记已观看，下次心跳放行。  
 - **全局**：统一 Result、异常码（409/402/451/400/500）、敏感词与内容净化。  
+
+---
+
+## 十三、审查结论与已修复风险（2026-02-28）
+
+- **广告闭环**：已补充广告观看完成回调接口 `/api/v1/ad/callback`；451 响应现含一次性 `adToken`，前端展示广告后携带 token 调用回调，后端核销并设置 ad:watched，下次心跳不再抛 451。  
+- **并发扣费**：免费用户 Token 扣减改为 `UserRepository.deductTokenBalance`（UPDATE ... WHERE balance >= amount），保证原子性，防止并发超扣。  
+- **购买与分润**：当前购买通过「Fork 故事/设定集」完成扣款与分润；独立「购买作品」接口可按需在后续迭代补充。  
+- **索引**：V6 已包含 comment 的 `(story_id, chapter_id, target_type, target_ref)` 与 `root_comment_id` 索引；广场 TRAFFIC 排序若需可对 `story.traffic_weight` 增加索引（见迁移脚本）。  
+- **后续建议**：RAG 延迟可加本地缓存；流式内容可考虑「先审后发」缓冲；私信可考虑 WebSocket 实时推送；广告计数间隔（如每 10 章）建议可配置化。
 
 以上为 RealmCrafter 后端 Server 的完整架构、功能逻辑关系、详细路径与接口说明；具体字段与枚举以源码和迁移脚本为准。
