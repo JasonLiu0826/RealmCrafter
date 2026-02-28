@@ -127,12 +127,18 @@ public class StoryService {
     }
 
     /**
-     * Fork 故事：无论 allowDownload 状态，均深拷贝 StoryDO + 所有 ChapterDO（满足云端续写与离线阅读）。
-     * 血统 sourceStoryId 永远保留；设定集联动由 cloneIncludesSettings 与绑定的 allowDownload 决定。
+     * Fork 故事包（故事 + 配套设定集）。
      * <p>
-     * 设定集联动：
-     * - cloneIncludesSettings=true 且 绑定设定集 allowDownload=true：自动 fork 设定集，新故事指向新设定副本
-     * - cloneIncludesSettings=false：新故事 settingPackId 直接引用原作者设定集（共享世界观图纸）
+     * 故事包三种权限与行为：
+     * 1）不允许下载：故事与设定集均在云端，可拉取/阅读/交互，不可下载、不可修改设定集。
+     *    → 仍会为当前用户创建故事+章节副本（供云端续写），设定集不 Fork，新故事引用原 settingPackId。
+     *    「不可下载」由导出/离线下载接口或前端根据 allowDownload 拦截。
+     * 2）允许下载、不允许修改：可从云端下载到本地，可拉取/阅读/交互/下载，不可修改设定集。
+     *    → 故事+章节副本归属当前用户，设定集不 Fork，新故事引用原 settingPackId。
+     * 3）允许下载、允许修改：可下载且可修改设定集。
+     *    → 三重校验通过时执行 forkSetting，新故事指向新设定副本（副本保留 sourceSettingId）。
+     * <p>
+     * 不论何种情况，新故事必设 sourceStoryId；若 Fork 设定集则必设 sourceSettingId，始终保留并展示原创者指纹 ID。
      */
     @Transactional
     public StoryDO forkStory(String sourceStoryId, Long forkUserId) {
@@ -174,16 +180,17 @@ public class StoryService {
             }
         }
 
+        // 设定集联动：三重校验防越权，任一不满足则降级为云端引用
+        boolean storyAllowDownload = original.getAllowDownload() != null && original.getAllowDownload();
+        boolean cloneIncludesSettings = original.getCloneIncludesSettings() != null && original.getCloneIncludesSettings();
+        SettingPackDO boundSetting = settingPackRepository.findById(original.getSettingPackId())
+                .orElseThrow(() -> new IllegalArgumentException("关联设定集不存在"));
+        boolean settingAllowDownload = boundSetting.getAllowDownload() != null && boundSetting.getAllowDownload();
+
         String newSettingPackId;
-        if (Boolean.TRUE.equals(original.getCloneIncludesSettings())) {
-            SettingPackDO boundSetting = settingPackRepository.findById(original.getSettingPackId())
-                    .orElseThrow(() -> new IllegalArgumentException("关联设定集不存在"));
-            if (Boolean.TRUE.equals(boundSetting.getAllowDownload())) {
-                SettingPackDO forkedSetting = settingPackService.forkSetting(original.getSettingPackId(), forkUserId);
-                newSettingPackId = forkedSetting.getId();
-            } else {
-                throw new IllegalArgumentException("该故事绑定的设定集仅支持云端引用，禁止克隆下载");
-            }
+        if (storyAllowDownload && cloneIncludesSettings && settingAllowDownload) {
+            SettingPackDO forkedSetting = settingPackService.forkSetting(original.getSettingPackId(), forkUserId);
+            newSettingPackId = forkedSetting.getId();
         } else {
             newSettingPackId = original.getSettingPackId();
         }
