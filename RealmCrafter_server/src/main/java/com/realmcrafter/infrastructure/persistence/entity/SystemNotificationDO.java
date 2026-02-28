@@ -57,7 +57,15 @@ public class SystemNotificationDO {
     }
 
     public enum NotificationType {
+        /** 系统类：等级提升等 */
+        SYSTEM,
+        /** @ 提及 */
         MENTION,
+        /** 互动：点赞、收藏、评论等 */
+        INTERACTION,
+        /** 奖励：作品被叉（付费/免费）获得经验或水晶 */
+        REWARD,
+        /** 兼容旧数据：创作者等级提升 */
         LEVEL_UP
     }
 }

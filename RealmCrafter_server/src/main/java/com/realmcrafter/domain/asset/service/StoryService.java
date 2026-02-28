@@ -2,6 +2,7 @@ package com.realmcrafter.domain.asset.service;
 
 import com.realmcrafter.domain.billing.CreatorPriceValidator;
 import com.realmcrafter.domain.billing.CreatorShareResolver;
+import com.realmcrafter.domain.social.service.NotificationService;
 import com.realmcrafter.domain.user.ExpAction;
 import com.realmcrafter.domain.user.service.UserExpService;
 import com.realmcrafter.infrastructure.id.AssetIdGenerator;
@@ -40,6 +41,7 @@ public class StoryService {
     private final UserRepository userRepository;
     private final WalletTransactionRepository walletTransactionRepository;
     private final UserExpService userExpService;
+    private final NotificationService notificationService;
 
     @Transactional(readOnly = true)
     public StoryDO getById(String id, Long userId) {
@@ -195,10 +197,14 @@ public class StoryService {
                 tx.setDescription("Fork 分润：故事 " + sourceStoryId + " 被 Fork");
                 walletTransactionRepository.save(tx);
                 userExpService.addExp(original.getUserId(), ExpAction.BE_BOUGHT);
+                notificationService.sendReward(original.getUserId(), forkUserId, "STORY", sourceStoryId,
+                        "你的付费作品被收藏", "获得 " + creatorAmount + " 灵能水晶");
             }
         } else {
             if (author != null) {
                 userExpService.addExp(original.getUserId(), ExpAction.BE_FORKED);
+                notificationService.sendReward(original.getUserId(), forkUserId, "STORY", sourceStoryId,
+                        "你的作品被收藏", "获得 15 经验");
             }
         }
         userExpService.addExp(forkUserId, ExpAction.FORK_ASSET);
