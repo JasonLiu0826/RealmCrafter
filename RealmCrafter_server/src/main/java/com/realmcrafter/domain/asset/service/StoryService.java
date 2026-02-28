@@ -11,6 +11,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -79,6 +80,20 @@ public class StoryService {
         }
         story.setStatus(StoryDO.Status.DELETED);
         storyRepository.save(story);
+    }
+
+    /**
+     * 阅读脉冲：用户点击书籍进入阅读器时更新最后阅读时间。
+     */
+    @Transactional
+    public StoryDO updateReadTime(String storyId, Long userId) {
+        StoryDO story = storyRepository.findById(storyId)
+                .orElseThrow(() -> new IllegalArgumentException("故事不存在"));
+        if (!story.getUserId().equals(userId)) {
+            throw new IllegalArgumentException("无权操作该故事");
+        }
+        story.setLastReadTime(LocalDateTime.now());
+        return storyRepository.save(story);
     }
 }
 

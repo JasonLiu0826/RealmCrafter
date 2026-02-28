@@ -51,6 +51,13 @@ public class StoryController {
         return Result.ok(updated);
     }
 
+    @PatchMapping("/{id}/read")
+    public Result<StoryDO> updateReadTime(@PathVariable("id") String id,
+                                         @RequestHeader("X-User-Id") Long userId) {
+        StoryDO updated = storyService.updateReadTime(id, userId);
+        return Result.ok(updated);
+    }
+
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable("id") String id,
                                @RequestHeader("X-User-Id") Long userId) {

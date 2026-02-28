@@ -92,6 +92,12 @@ public class StoryDO {
     @Column(name = "last_read_time")
     private LocalDateTime lastReadTime;
 
+    /**
+     * 故事标签，逗号分隔或 JSON 存储，用于模糊搜索与展示。
+     */
+    @Column(name = "tags", length = 1024)
+    private String tags;
+
     @Column(name = "create_time", nullable = false, updatable = false)
     private LocalDateTime createTime;
 
