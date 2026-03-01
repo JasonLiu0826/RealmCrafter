@@ -54,6 +54,7 @@ public class NotificationService {
         n.setType(SystemNotificationDO.NotificationType.MENTION);
         n.setTitle("有人提到了你");
         n.setBody(excerpt != null && !excerpt.isEmpty() ? excerpt : "点击查看");
+        if (n.getBody() == null) n.setBody("");
         n.setRefType(refType);
         n.setRefId(refId);
         n.setActorUserId(actorUserId);
@@ -93,7 +94,8 @@ public class NotificationService {
         n.setUserId(targetUserId);
         n.setType(SystemNotificationDO.NotificationType.REWARD);
         n.setTitle(title != null && !title.isBlank() ? title : "作品被收藏");
-        n.setBody(body != null ? body : "点击查看");
+        n.setBody(body != null && !body.isBlank() ? body : "点击查看");
+        if (n.getBody() == null) n.setBody("");
         n.setRefType(refType);
         n.setRefId(refId);
         n.setActorUserId(actorUserId);

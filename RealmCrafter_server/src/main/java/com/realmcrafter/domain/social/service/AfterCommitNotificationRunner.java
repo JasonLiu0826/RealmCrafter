@@ -65,8 +65,10 @@ public class AfterCommitNotificationRunner {
                     userExpService.addExp(targetId, ExpAction.BE_MENTIONED);
                 }
             }
-            storyRepository.findById(storyId).ifPresent(story ->
-                    userExpService.addExp(story.getUserId(), ExpAction.BE_COMMENTED));
+            // 在独立事务中按 ID 查 story 再取 authorId，避免使用主事务的 proxy 导致 LazyInitializationException
+            runInNewTransaction(() ->
+                    storyRepository.findById(storyId).ifPresent(story ->
+                            userExpService.addExp(story.getUserId(), ExpAction.BE_COMMENTED)));
             userExpService.addExp(commentAuthorUserId, ExpAction.PUBLISH_COMMENT);
         } catch (Exception e) {
             log.warn("评论后提及/经验执行异常: commentId={}, storyId={}", commentId, storyId, e);

@@ -54,6 +54,7 @@ public class SystemNotificationDO {
     @PrePersist
     protected void onCreate() {
         if (createTime == null) createTime = LocalDateTime.now();
+        if (body == null) body = "";
     }
 
     public enum NotificationType {
