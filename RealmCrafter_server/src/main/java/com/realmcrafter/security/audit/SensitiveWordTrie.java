@@ -1,5 +1,7 @@
 package com.realmcrafter.security.audit;
 
+import org.springframework.stereotype.Component;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -7,6 +9,7 @@ import java.util.Map;
  * 敏感词字典树（Trie），用于快速检测文本中是否包含敏感词。
  * 第一道防线：本地敏感词前置拦截。
  */
+@Component
 public class SensitiveWordTrie {
 
     private final TrieNode root = new TrieNode();

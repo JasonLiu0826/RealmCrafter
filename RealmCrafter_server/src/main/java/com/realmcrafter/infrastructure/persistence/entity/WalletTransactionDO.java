@@ -31,7 +31,7 @@ public class WalletTransactionDO {
     private BigDecimal amount;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 32)
+    @Column(nullable = false, columnDefinition = "enum('RECHARGE','BUY_ASSET','CREATOR_REVENUE','PENALTY_DEDUCT')")
     private Type type;
 
     @Column(length = 255)

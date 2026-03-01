@@ -116,6 +116,12 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public Result<?> handleException(Exception e, HttpServletRequest request) {
         log.error("Unhandled exception: uri={}", request.getRequestURI(), e);
-        return Result.fail(500, "Internal server error");
+        StringBuilder msg = new StringBuilder(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        Throwable c = e.getCause();
+        while (c != null) {
+            msg.append("; cause: ").append(c.getMessage() != null ? c.getMessage() : c.getClass().getSimpleName());
+            c = c.getCause();
+        }
+        return Result.fail(500, msg.toString());
     }
 }

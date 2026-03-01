@@ -52,7 +52,7 @@ public class UserDO {
     private LocalDateTime sealedUntil;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 32)
+    @Column(nullable = false, columnDefinition = "enum('USER','ADMIN','SUPER_ADMIN')")
     private UserRole role = UserRole.USER;
 
     @Column(length = 512)

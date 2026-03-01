@@ -1,5 +1,6 @@
 package com.realmcrafter.domain.asset.service;
 
+import com.realmcrafter.domain.asset.event.StoryForkedEvent;
 import com.realmcrafter.domain.billing.CreatorPriceValidator;
 import com.realmcrafter.domain.billing.CreatorShareResolver;
 import com.realmcrafter.domain.social.service.NotificationService;
@@ -17,6 +18,7 @@ import com.realmcrafter.infrastructure.persistence.repository.StoryRepository;
 import com.realmcrafter.infrastructure.persistence.repository.UserRepository;
 import com.realmcrafter.infrastructure.persistence.repository.WalletTransactionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -42,6 +44,7 @@ public class StoryService {
     private final WalletTransactionRepository walletTransactionRepository;
     private final UserExpService userExpService;
     private final NotificationService notificationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(readOnly = true)
     public StoryDO getById(String id, Long userId) {
@@ -196,18 +199,8 @@ public class StoryService {
                 tx.setType(WalletTransactionDO.Type.CREATOR_REVENUE);
                 tx.setDescription("Fork 分润：故事 " + sourceStoryId + " 被 Fork");
                 walletTransactionRepository.save(tx);
-                userExpService.addExp(original.getUserId(), ExpAction.BE_BOUGHT);
-                notificationService.sendReward(original.getUserId(), forkUserId, "STORY", sourceStoryId,
-                        "你的付费作品被收藏", "获得 " + creatorAmount + " 灵能水晶");
-            }
-        } else {
-            if (author != null) {
-                userExpService.addExp(original.getUserId(), ExpAction.BE_FORKED);
-                notificationService.sendReward(original.getUserId(), forkUserId, "STORY", sourceStoryId,
-                        "你的作品被收藏", "获得 15 经验");
             }
         }
-        userExpService.addExp(forkUserId, ExpAction.FORK_ASSET);
 
         // 设定集联动：三重校验防越权，任一不满足则降级为云端引用
         boolean storyAllowDownload = original.getAllowDownload() != null && original.getAllowDownload();
@@ -256,6 +249,17 @@ public class StoryService {
 
         original.setForkCount((original.getForkCount() != null ? original.getForkCount() : 0) + 1);
         storyRepository.save(original);
+
+        // 事务提交后执行加经验与通知，避免与当前事务内用户行锁冲突导致 PessimisticLockException
+        if (author != null) {
+            if (price.compareTo(BigDecimal.ZERO) > 0) {
+                eventPublisher.publishEvent(StoryForkedEvent.paid(original.getUserId(), forkUserId, sourceStoryId, price.multiply(creatorShare).setScale(2, RoundingMode.HALF_UP)));
+            } else {
+                eventPublisher.publishEvent(StoryForkedEvent.free(original.getUserId(), forkUserId, sourceStoryId));
+            }
+        } else {
+            eventPublisher.publishEvent(StoryForkedEvent.forkUserOnly(forkUserId, sourceStoryId));
+        }
 
         return newStory;
     }

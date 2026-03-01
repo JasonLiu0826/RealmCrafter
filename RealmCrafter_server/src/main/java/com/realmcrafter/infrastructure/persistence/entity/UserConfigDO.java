@@ -34,7 +34,7 @@ public class UserConfigDO {
     /**
      * 混沌阈值（Temperature），范围 0.1 - 1.0，默认 0.70。
      */
-    @Column(name = "chaos_level", nullable = false)
+    @Column(name = "chaos_level", nullable = false, columnDefinition = "decimal(5,2)")
     private Double chaosLevel = 0.70;
 
     /**
