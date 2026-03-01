@@ -1,169 +1,151 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-RealmCrafter 终极全链路端到端 (E2E) 点火冒烟测试
+RealmCrafter 全链路 E2E 测试（重新生成版）
 
-验证核心模块（鉴权、经济、资产、社交、后台）协同工作：
-- JWT 鉴权、支付回调充值、金牌创作者分润、防超卖扣款、经验值、站内通知
+流程：注册/登录 -> 充值 -> 创建设定集与故事 -> 点赞 -> Fork 购买 -> 评论 @ 作者 -> 拉取通知
 """
 
 import os
 import sys
 import time
 import json
-import io
 
-# Windows 控制台兼容：避免 Unicode 符号导致 GBK 编码错误
+# Windows 控制台：避免 Unicode 导致编码错误
 if sys.platform == "win32":
+    import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 try:
     import requests
 except ImportError:
-    print("\033[91m[FAIL] requests 未安装。请执行: pip install requests\033[0m")
+    print("[FAIL] 请先安装: pip install requests")
     sys.exit(1)
 
-# ------------------------------ 配置 ------------------------------
+# ---------- 配置 ----------
 BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:8080")
-# 可选：管理员账号，用于授予 Alice 金牌创作者（否则 Alice 按 Lv1 分润 70%）
-E2E_ADMIN_USERNAME = os.environ.get("E2E_ADMIN_USERNAME", "")
-E2E_ADMIN_PASSWORD = os.environ.get("E2E_ADMIN_PASSWORD", "")
-
 SUFFIX = str(int(time.time()))
-ALICE_USERNAME = f"e2e_alice_{SUFFIX}"
-BOB_USERNAME = f"e2e_bob_{SUFFIX}"
+ALICE_USER = "e2e_alice_" + SUFFIX
+BOB_USER = "e2e_bob_" + SUFFIX
 STORY_TITLE = "赛博修仙"
-# Lv1~Lv3 创作者定价上限 15 水晶（见 CreatorPriceValidator）
-STORY_PRICE = 15
+STORY_PRICE = 15   # Lv1 定价上限
 BOB_RECHARGE = 1000
+NOTIFICATION_POLL_SEC = 2
+NOTIFICATION_POLL_ATTEMPTS = 3
 
-# ------------------------------ 彩色日志 ------------------------------
-def ok(msg: str):
-    print(f"\033[92m[SUCCESS] {msg}\033[0m")
+def log_ok(msg):
+    print("\033[92m[OK] %s\033[0m" % msg)
 
-def fail(msg: str, detail: str = ""):
-    print(f"\033[91m[FAIL] {msg}\033[0m")
+def log_fail(msg, detail=None):
+    print("\033[91m[FAIL] %s\033[0m" % msg)
     if detail:
-        print(f"\033[91m   {detail}\033[0m")
+        print("\033[91m  %s\033[0m" % detail)
 
-def info(msg: str):
-    print(f"\033[94m[INFO] {msg}\033[0m")
+def log_step(msg):
+    print("\033[93m[>>] %s\033[0m" % msg)
 
-def step(msg: str):
-    print(f"\033[93m[>>] {msg}\033[0m")
+def log_info(msg):
+    print("\033[94m[INFO] %s\033[0m" % msg)
 
-def dump(resp: requests.Response):
+def resp_body(resp):
     try:
-        body = resp.json() if resp.text else {}
-        return json.dumps(body, ensure_ascii=False, indent=2)
+        return resp.json() if resp.text else {}
     except Exception:
-        return resp.text or "(empty)"
+        return {}
 
-# ------------------------------ 断言与请求封装 ------------------------------
-def assert_ok(resp: requests.Response, context: str) -> dict:
-    if resp.status_code in (401, 403, 500):
-        fail(f"{context} — HTTP {resp.status_code}", dump(resp))
-        raise AssertionError(dump(resp))
-    data = resp.json() if resp.text else {}
-    code = data.get("code", -1)
+def dump(resp):
+    return json.dumps(resp_body(resp), ensure_ascii=False, indent=2)
+
+def api_ok(resp, step_name):
+    """检查 HTTP 200 且 code==0，失败则打印 body 并抛错"""
+    if resp.status_code != 200:
+        log_fail("%s: HTTP %s" % (step_name, resp.status_code), dump(resp))
+        raise AssertionError("HTTP %s" % resp.status_code)
+    body = resp_body(resp)
+    code = body.get("code", -1)
     if code != 0:
-        fail(f"{context} — code={code}, message={data.get('message', '')}", dump(resp))
-        raise AssertionError(dump(resp))
-    return data
+        log_fail("%s: code=%s msg=%s" % (step_name, code, body.get("message", "")), dump(resp))
+        raise AssertionError("code=%s" % code)
+    return body
 
-def auth_headers(token: str, user_id: int = None) -> dict:
+def headers(token=None, user_id=None):
     h = {"Content-Type": "application/json"}
     if token:
-        h["Authorization"] = f"Bearer {token}"
+        h["Authorization"] = "Bearer %s" % token
     if user_id is not None:
         h["X-User-Id"] = str(user_id)
     return h
 
-# ------------------------------ 主流程 ------------------------------
+def extract_list_from_page(data_node):
+    """从 Result.data (Page) 中取出列表。支持 data.content 或 data 本身为 list"""
+    if data_node is None:
+        return []
+    if isinstance(data_node, list):
+        return data_node
+    if isinstance(data_node, dict):
+        return data_node.get("content", [])
+    return []
+
+
 def main():
-    print("\n" + "=" * 60)
-    print("  RealmCrafter E2E 点火冒烟测试")
-    print("=" * 60 + "\n")
+    print("\n" + "=" * 56)
+    print("  RealmCrafter E2E 测试")
+    print("=" * 56 + "\n")
 
-    alice_id = None
-    bob_id = None
-    alice_token = None
-    bob_token = None
-    setting_id = None
-    story_id = None
-    bob_fork_story_id = None
+    alice_id = bob_id = None
+    alice_token = bob_token = None
+    setting_id = story_id = bob_fork_id = None
 
-    # ---------- 1. 上帝视角准备：注册 + 登录 ----------
-    step("1. 注册用户 Alice（大作家）与 Bob（土豪读者）")
-    r = requests.post(f"{BASE_URL}/api/v1/auth/register", json={
-        "username": ALICE_USERNAME,
+    # ---- 1. 注册与登录 ----
+    log_step("1. 注册 Alice")
+    r = requests.post(BASE_URL + "/api/v1/auth/register", json={
+        "username": ALICE_USER,
         "password": "alice123456",
         "nickname": "Alice",
         "signature": "大作家"
     })
-    data = assert_ok(r, "注册 Alice")
-    alice_id = data["data"]["userId"]
-    alice_token = data["data"]["token"]
-    ok(f"Alice 注册成功。userId={alice_id}")
+    d = api_ok(r, "注册 Alice")
+    alice_id = d["data"]["userId"]
+    alice_token = d["data"]["token"]
+    log_ok("Alice 注册成功 userId=%s" % alice_id)
 
-    r = requests.post(f"{BASE_URL}/api/v1/auth/register", json={
-        "username": BOB_USERNAME,
+    log_step("2. 注册 Bob")
+    r = requests.post(BASE_URL + "/api/v1/auth/register", json={
+        "username": BOB_USER,
         "password": "bob123456",
         "nickname": "Bob",
         "signature": "土豪读者"
     })
-    data = assert_ok(r, "注册 Bob")
-    bob_id = data["data"]["userId"]
-    bob_token = data["data"]["token"]
-    ok(f"Bob 注册成功。userId={bob_id}")
+    d = api_ok(r, "注册 Bob")
+    bob_id = d["data"]["userId"]
+    bob_token = d["data"]["token"]
+    log_ok("Bob 注册成功 userId=%s" % bob_id)
 
-    step("2. 登录获取 JWT（已由注册返回，此处再登录一次验证）")
-    r = requests.post(f"{BASE_URL}/api/v1/auth/login", json={
-        "username": ALICE_USERNAME,
-        "password": "alice123456"
-    })
-    assert_ok(r, "Alice 登录")
-    r = requests.post(f"{BASE_URL}/api/v1/auth/login", json={
-        "username": BOB_USERNAME,
-        "password": "bob123456"
-    })
-    assert_ok(r, "Bob 登录")
-    ok("双方 JWT 有效")
+    log_step("3. 登录校验")
+    r = requests.post(BASE_URL + "/api/v1/auth/login", json={"username": ALICE_USER, "password": "alice123456"})
+    api_ok(r, "Alice 登录")
+    r = requests.post(BASE_URL + "/api/v1/auth/login", json={"username": BOB_USER, "password": "bob123456"})
+    api_ok(r, "Bob 登录")
+    log_ok("双方登录正常")
 
-    step("3. 使用支付回调给 Bob 充值 1000 灵能水晶（无需 Admin）")
-    r = requests.post(f"{BASE_URL}/api/v1/payment/wechat/callback", json={
+    # ---- 2. 充值 ----
+    log_step("4. Bob 充值 1000 水晶（支付回调）")
+    r = requests.post(BASE_URL + "/api/v1/payment/wechat/callback", json={
         "userId": bob_id,
         "amount": BOB_RECHARGE,
-        "orderId": f"e2e-recharge-{SUFFIX}"
+        "orderId": "e2e-recharge-%s" % SUFFIX
     }, headers={"Content-Type": "application/json"})
-    if r.status_code != 200 or (r.json() or {}).get("code") != "SUCCESS":
-        fail("Bob 充值失败", dump(r))
-        raise AssertionError(dump(r))
-    ok(f"Bob 充值 {BOB_RECHARGE} 灵能水晶成功")
+    if r.status_code != 200 or (resp_body(r) or {}).get("code") != "SUCCESS":
+        log_fail("充值失败", dump(r))
+        raise AssertionError("充值失败")
+    log_ok("Bob 充值 %s 水晶成功" % BOB_RECHARGE)
 
-    if E2E_ADMIN_USERNAME and E2E_ADMIN_PASSWORD:
-        step("4. 管理员授予 Alice 金牌创作者（isGoldenCreator=true）")
-        r = requests.post(f"{BASE_URL}/api/v1/auth/login", json={
-            "username": E2E_ADMIN_USERNAME,
-            "password": E2E_ADMIN_PASSWORD
-        })
-        data = assert_ok(r, "管理员登录")
-        admin_token = data["data"]["token"]
-        r = requests.post(
-            f"{BASE_URL}/api/v1/admin/grant-golden-creator?targetUserId={alice_id}",
-            headers=auth_headers(admin_token)
-        )
-        assert_ok(r, "授予金牌创作者")
-        ok("Alice 已设为金牌创作者（分润 90%）")
-    else:
-        info("4. 未配置 E2E_ADMIN_USERNAME/PASSWORD，跳过金牌授予；Alice 按 Lv1 分润 70%")
-
-    # ---------- 2. 创世：设定集 + 故事 ----------
-    step("5. Alice 创建设定集《赛博修仙》（定价 %s 水晶，allowDownload=true）" % STORY_PRICE)
+    # ---- 3. 创建设定集与故事 ----
+    log_step("5. Alice 创建设定集《赛博修仙》")
     r = requests.post(
-        f"{BASE_URL}/api/v1/settings",
-        headers=auth_headers(alice_token, alice_id),
+        BASE_URL + "/api/v1/settings",
+        headers=headers(alice_token, alice_id),
         json={
             "title": STORY_TITLE,
             "cover": "",
@@ -180,14 +162,14 @@ def main():
             "price": STORY_PRICE
         }
     )
-    data = assert_ok(r, "创建设定集")
-    setting_id = data["data"]["id"]
-    ok(f"设定集创建成功。id={setting_id}")
+    d = api_ok(r, "创建设定集")
+    setting_id = d["data"]["id"]
+    log_ok("设定集 id=%s" % setting_id)
 
-    step("6. Alice 基于该设定集创建同名故事《赛博修仙》")
+    log_step("6. Alice 创建故事《赛博修仙》")
     r = requests.post(
-        f"{BASE_URL}/api/v1/stories",
-        headers=auth_headers(alice_token, alice_id),
+        BASE_URL + "/api/v1/stories",
+        headers=headers(alice_token, alice_id),
         json={
             "userId": alice_id,
             "settingPackId": setting_id,
@@ -197,134 +179,135 @@ def main():
             "price": STORY_PRICE
         }
     )
-    data = assert_ok(r, "创建故事")
-    story_id = data["data"]["id"]
-    ok(f"故事创建成功。id={story_id}")
+    d = api_ok(r, "创建故事")
+    story_id = d["data"]["id"]
+    log_ok("故事 id=%s" % story_id)
 
-    # ---------- 3. 广场相遇与商业化 ----------
-    step("7. Bob 在广场刷到 Alice 的《赛博修仙》")
+    # ---- 4. 广场与互动 ----
+    log_step("7. Bob 广场刷故事（可选校验）")
     r = requests.get(
-        f"{BASE_URL}/api/v1/square/stories?page=0&size=20&sort=NEWEST",
-        headers=auth_headers(bob_token, bob_id)
+        BASE_URL + "/api/v1/square/stories?page=0&size=20&sort=NEWEST",
+        headers=headers(bob_token, bob_id)
     )
-    if r.status_code == 200:
-        data = r.json() or {}
-        if data.get("code") == 0:
-            content = data.get("data") or {}
-            items = content.get("content", []) if isinstance(content, dict) else []
-            found = next((s for s in items if s.get("id") == story_id or s.get("title") == STORY_TITLE), None)
-            if found:
-                ok("Bob 在广场看到《赛博修仙》")
-            else:
-                info("广场列表中未找到该故事，继续后续步骤（可能排序或分页导致）")
+    if r.status_code == 200 and resp_body(r).get("code") == 0:
+        page = (resp_body(r).get("data") or {})
+        items = extract_list_from_page(page)
+        if any((s.get("id") == story_id or s.get("title") == STORY_TITLE) for s in (items or [])):
+            log_ok("广场中可见《赛博修仙》")
         else:
-            info("广场接口返回非 0，继续后续步骤。body=%s" % (dump(r),))
+            log_info("广场未找到该故事（可能排序/分页），继续")
     else:
-        info("广场接口 HTTP %s，跳过广场校验，继续点赞/Fork（story_id 已知）" % r.status_code)
+        log_info("广场请求非常规响应，继续后续步骤")
 
-    step("8. Bob 对故事点赞（InteractionService.toggleLike）")
+    log_step("8. Bob 点赞")
     r = requests.post(
-        f"{BASE_URL}/api/v1/interactions/like",
-        headers=auth_headers(bob_token, bob_id),
+        BASE_URL + "/api/v1/interactions/like",
+        headers=headers(bob_token, bob_id),
         json={"type": "STORY", "id": story_id}
     )
-    data = assert_ok(r, "点赞")
-    ok(f"点赞成功。liked={data.get('data', {}).get('liked', True)}")
+    api_ok(r, "点赞")
+    log_ok("点赞成功")
 
-    step("9. Bob 购买 Fork（%s 水晶），验证扣款与分润" % STORY_PRICE)
-    r = requests.get(f"{BASE_URL}/api/v1/auth/profile", headers=auth_headers(bob_token))
-    data = assert_ok(r, "Bob 购买前 profile")
-    bob_balance_before = float((data.get("data") or {}).get("crystalBalance") or 0)
+    log_step("9. Bob 购买 Fork（%s 水晶）" % STORY_PRICE)
+    r = requests.get(BASE_URL + "/api/v1/auth/profile", headers=headers(bob_token))
+    d = api_ok(r, "Bob 购买前 profile")
+    bob_before = float((d.get("data") or {}).get("crystalBalance") or 0)
 
     r = requests.post(
-        f"{BASE_URL}/api/v1/stories/{story_id}/fork",
-        headers=auth_headers(bob_token, bob_id)
+        BASE_URL + "/api/v1/stories/%s/fork" % story_id,
+        headers=headers(bob_token, bob_id)
     )
-    data = assert_ok(r, "Fork 故事")
-    bob_fork_story_id = data["data"]["id"]
-    ok(f"Bob 成功购买《赛博修仙》Fork。forkStoryId={bob_fork_story_id}")
+    d = api_ok(r, "Fork")
+    bob_fork_id = d["data"]["id"]
+    log_ok("Fork 成功 forkId=%s" % bob_fork_id)
 
-    r = requests.get(f"{BASE_URL}/api/v1/auth/profile", headers=auth_headers(bob_token))
-    data = assert_ok(r, "Bob 购买后 profile")
-    bob_balance_after = float((data.get("data") or {}).get("crystalBalance") or 0)
-    if abs((bob_balance_before - STORY_PRICE) - bob_balance_after) > 0.01:
-        fail(f"Bob 水晶未正确扣减：before={bob_balance_before}, after={bob_balance_after}, 期望减少 {STORY_PRICE}")
-    else:
-        ok(f"Bob 扣款正确。当前水晶余额: {bob_balance_after}")
+    r = requests.get(BASE_URL + "/api/v1/auth/profile", headers=headers(bob_token))
+    d = api_ok(r, "Bob 购买后 profile")
+    bob_after = float((d.get("data") or {}).get("crystalBalance") or 0)
+    if abs((bob_before - STORY_PRICE) - bob_after) > 0.01:
+        log_fail("Bob 水晶扣减异常 before=%.2f after=%.2f 应减 %s" % (bob_before, bob_after, STORY_PRICE))
+        raise AssertionError("扣款异常")
+    log_ok("Bob 扣款正确 余额=%.2f" % bob_after)
 
-    r = requests.get(f"{BASE_URL}/api/v1/auth/profile", headers=auth_headers(alice_token))
-    data = assert_ok(r, "Alice 收益后 profile")
-    alice_balance = float((data.get("data") or {}).get("crystalBalance") or 0)
-    # 金牌 90%，非金牌 Lv1 70%；价格 STORY_PRICE
-    expected_min = round(STORY_PRICE * 0.7, 2)
-    expected_max = round(STORY_PRICE * 0.9, 2)
-    if not (expected_min <= alice_balance <= expected_max):
-        fail(f"Alice 收益异常：crystalBalance={alice_balance}，期望约 {expected_min}（70%）或 {expected_max}（90%）")
-    else:
-        ok(f"Alice 收到分润，当前水晶: {alice_balance}（金牌≈{expected_max}，非金牌≈{expected_min}）")
+    r = requests.get(BASE_URL + "/api/v1/auth/profile", headers=headers(alice_token, alice_id))
+    d = api_ok(r, "Alice 收益后 profile")
+    alice_crystal = float((d.get("data") or {}).get("crystalBalance") or 0)
+    low, high = round(STORY_PRICE * 0.7, 2), round(STORY_PRICE * 0.9, 2)
+    if not (low <= alice_crystal <= high):
+        log_fail("Alice 收益异常 crystal=%.2f 期望约 [%s, %s]" % (alice_crystal, low, high))
+        raise AssertionError("分润异常")
+    log_ok("Alice 分润正常 crystal=%.2f" % alice_crystal)
 
-    # ---------- 4. 社交裂变与回声 ----------
-    step("10. Bob 在购买的分支下发表评论并 @Alice")
-    # 评论挂在 Bob 的 fork 故事上，chapterId 用 1（故事可能尚无章节，仅存评论）
+    # ---- 5. 评论与通知 ----
+    log_step("10. Bob 评论并 @Alice")
     r = requests.post(
-        f"{BASE_URL}/api/v1/comments",
-        headers=auth_headers(bob_token, bob_id),
+        BASE_URL + "/api/v1/comments",
+        headers=headers(bob_token, bob_id),
         json={
-            "storyId": bob_fork_story_id,
+            "storyId": bob_fork_id,
             "chapterId": 1,
-            "content": f"太牛逼了，@{ALICE_USERNAME} 快更！",
+            "content": "太牛逼了，@%s 快更！" % ALICE_USER,
             "targetType": "PARAGRAPH",
             "targetRef": "0",
             "mentionedUserIds": [alice_id]
         }
     )
-    data = assert_ok(r, "发表评论")
-    ok("Bob 评论成功，已 @Alice")
+    api_ok(r, "发表评论")
+    log_ok("评论成功并 @Alice")
 
-    step("11. Alice 拉取未读通知（期望：REWARD 进账 + MENTION 被@）")
-    time.sleep(2)  # 留时间给 afterCommit 监听器落库
-    r = requests.get(
-        f"{BASE_URL}/api/v1/notifications?page=0&size=20",
-        headers=auth_headers(alice_token, alice_id)
-    )
-    data = assert_ok(r, "Alice 通知列表")
-    content = data.get("data") or {}
-    notifications = content.get("content", []) if isinstance(content, dict) else []
-    reward_notifications = [n for n in notifications if n.get("type") == "REWARD"]
-    mention_notifications = [n for n in notifications if n.get("type") == "MENTION"]
-    if not reward_notifications:
-        fail("Alice 未收到 REWARD 通知（Fork 分润）", f"当前通知: {[n.get('type') for n in notifications]}")
-        if not notifications:
-            info("响应 data 结构: " + json.dumps(content, ensure_ascii=False)[:200])
-        raise AssertionError("缺少 REWARD 通知")
-    else:
-        ok(f"Alice 收到 REWARD 通知（共 {len(reward_notifications)} 条）")
-    if not mention_notifications:
-        fail("Alice 未收到 MENTION 通知（被 @）")
-        raise AssertionError("缺少 MENTION 通知")
-    else:
-        ok(f"Alice 收到 MENTION 通知（共 {len(mention_notifications)} 条）")
+    log_step("11. Alice 拉取通知（轮询 %s 次，间隔 %ss）" % (NOTIFICATION_POLL_ATTEMPTS, NOTIFICATION_POLL_SEC))
+    notifications = []
+    for attempt in range(1, NOTIFICATION_POLL_ATTEMPTS + 1):
+        time.sleep(NOTIFICATION_POLL_SEC)
+        r = requests.get(
+            BASE_URL + "/api/v1/notifications?page=0&size=20",
+            headers=headers(alice_token, alice_id)
+        )
+        d = api_ok(r, "通知列表")
+        data_node = d.get("data")
+        notifications = extract_list_from_page(data_node)
+        if not isinstance(notifications, list):
+            notifications = []
+        types = [n.get("type") for n in notifications if n.get("type")]
+        log_info("第 %s 次拉取: 共 %s 条 类型=%s" % (attempt, len(notifications), types))
+        if notifications:
+            break
 
-    # 若后端有点赞即发 INTERACTION 通知，可在此断言
-    interaction_notifications = [n for n in notifications if n.get("type") == "INTERACTION"]
-    if interaction_notifications:
-        ok(f"Alice 收到 INTERACTION 通知（如被赞，共 {len(interaction_notifications)} 条）")
-    else:
-        info("当前后端点赞未发 INTERACTION 通知，仅加 EXP，属预期行为")
+    reward = [n for n in notifications if n.get("type") == "REWARD"]
+    mention = [n for n in notifications if n.get("type") == "MENTION"]
+    inter = [n for n in notifications if n.get("type") == "INTERACTION"]
 
-    print("\n" + "=" * 60)
-    print("  全链路 E2E 点火冒烟测试通过")
-    print("=" * 60 + "\n")
+    if reward:
+        log_ok("REWARD 通知 %s 条" % len(reward))
+    else:
+        log_fail("未收到 REWARD 通知", "当前 data 结构: %s" % (json.dumps(d.get("data"), ensure_ascii=False)[:300] if d.get("data") else "null"))
+        raise AssertionError("缺少 REWARD")
+
+    if mention:
+        log_ok("MENTION 通知 %s 条" % len(mention))
+    else:
+        log_fail("未收到 MENTION 通知")
+        raise AssertionError("缺少 MENTION")
+
+    if inter:
+        log_ok("INTERACTION 通知 %s 条" % len(inter))
+    else:
+        log_info("无 INTERACTION 通知（视后端实现而定）")
+
+    print("\n" + "=" * 56)
+    print("  E2E 测试全部通过")
+    print("=" * 56 + "\n")
+
 
 if __name__ == "__main__":
     try:
         main()
-    except AssertionError as e:
-        print("\033[91m\nE2E 测试未通过。请根据上述 response body 排查。\033[0m\n")
+    except AssertionError:
+        print("\n\033[91mE2E 未通过，请根据上方输出排查。\033[0m\n")
         sys.exit(1)
     except requests.exceptions.ConnectionError as e:
-        fail("无法连接后端", f"请确认服务已启动: {BASE_URL}\n{e}")
+        log_fail("无法连接 %s" % BASE_URL, str(e))
         sys.exit(1)
     except Exception as e:
-        fail("未预期异常", str(e))
+        log_fail("异常", str(e))
         raise

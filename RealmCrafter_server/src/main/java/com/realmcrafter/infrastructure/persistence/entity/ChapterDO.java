@@ -3,6 +3,8 @@ package com.realmcrafter.infrastructure.persistence.entity;
 import lombok.Getter;
 import lombok.Setter;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import javax.persistence.*;
 import java.time.LocalDateTime;
 
@@ -26,6 +28,7 @@ public class ChapterDO {
     @Column(name = "story_id", nullable = false, length = 32)
     private String storyId;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "story_id", insertable = false, updatable = false)
     private StoryDO story;

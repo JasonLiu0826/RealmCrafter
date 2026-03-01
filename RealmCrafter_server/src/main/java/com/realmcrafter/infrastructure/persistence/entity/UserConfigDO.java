@@ -3,6 +3,8 @@ package com.realmcrafter.infrastructure.persistence.entity;
 import lombok.Getter;
 import lombok.Setter;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import javax.persistence.*;
 import java.time.LocalDateTime;
 
@@ -20,6 +22,7 @@ public class UserConfigDO {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
+    @JsonIgnore
     @OneToOne(fetch = FetchType.LAZY)
     @MapsId
     @JoinColumn(name = "user_id")

@@ -5,6 +5,8 @@ import com.realmcrafter.infrastructure.persistence.converter.JsonConverter;
 import lombok.Getter;
 import lombok.Setter;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import javax.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -27,6 +29,7 @@ public class SettingPackDO {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", insertable = false, updatable = false)
     private UserDO user;

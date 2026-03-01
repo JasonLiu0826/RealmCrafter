@@ -1,5 +1,6 @@
 package com.realmcrafter.infrastructure.persistence.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -25,6 +26,7 @@ public class StoryDO {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", insertable = false, updatable = false)
     private UserDO user;
@@ -33,6 +35,7 @@ public class StoryDO {
     @Column(name = "setting_pack_id", nullable = false, length = 32)
     private String settingPackId;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "setting_pack_id", insertable = false, updatable = false)
     private SettingPackDO settingPack;

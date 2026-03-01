@@ -35,6 +35,10 @@ public class SystemNotificationDO {
     @Column(name = "body", columnDefinition = "text")
     private String body;
 
+    /** 与 body 同义，部分环境表结构有 NOT NULL 的 content 列，插入时必填 */
+    @Column(name = "content", length = 1000)
+    private String content;
+
     /** 关联业务：如 comment_id、story_id 等，JSON 或 key */
     @Column(name = "ref_type", length = 32)
     private String refType;
@@ -55,6 +59,7 @@ public class SystemNotificationDO {
     protected void onCreate() {
         if (createTime == null) createTime = LocalDateTime.now();
         if (body == null) body = "";
+        if (content == null) content = (body != null ? body : "");
     }
 
     public enum NotificationType {

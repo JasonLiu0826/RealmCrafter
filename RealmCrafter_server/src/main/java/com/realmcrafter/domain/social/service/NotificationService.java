@@ -53,8 +53,9 @@ public class NotificationService {
         n.setUserId(targetUserId);
         n.setType(SystemNotificationDO.NotificationType.MENTION);
         n.setTitle("有人提到了你");
-        n.setBody(excerpt != null && !excerpt.isEmpty() ? excerpt : "点击查看");
-        if (n.getBody() == null) n.setBody("");
+        String bodyText = excerpt != null && !excerpt.isEmpty() ? excerpt : "点击查看";
+        n.setBody(bodyText);
+        n.setContent(bodyText != null ? bodyText : "");
         n.setRefType(refType);
         n.setRefId(refId);
         n.setActorUserId(actorUserId);
@@ -71,7 +72,9 @@ public class NotificationService {
         n.setUserId(userId);
         n.setType(SystemNotificationDO.NotificationType.LEVEL_UP);
         n.setTitle("创作者等级提升");
-        n.setBody("恭喜！您已晋升为 Lv" + newLevel + " 创作者");
+        String bodyText = "恭喜！您已晋升为 Lv" + newLevel + " 创作者";
+        n.setBody(bodyText);
+        n.setContent(bodyText);
         n.setRefType("LEVEL");
         n.setRefId(String.valueOf(newLevel));
         systemNotificationRepository.save(n);
@@ -94,8 +97,9 @@ public class NotificationService {
         n.setUserId(targetUserId);
         n.setType(SystemNotificationDO.NotificationType.REWARD);
         n.setTitle(title != null && !title.isBlank() ? title : "作品被收藏");
-        n.setBody(body != null && !body.isBlank() ? body : "点击查看");
-        if (n.getBody() == null) n.setBody("");
+        String bodyText = body != null && !body.isBlank() ? body : "点击查看";
+        n.setBody(bodyText);
+        n.setContent(bodyText != null ? bodyText : "");
         n.setRefType(refType);
         n.setRefId(refId);
         n.setActorUserId(actorUserId);
