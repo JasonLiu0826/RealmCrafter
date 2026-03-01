@@ -23,7 +23,7 @@ public class UserConfigDO {
     private Long userId;
 
     @JsonIgnore
-    @OneToOne(fetch = FetchType.LAZY)
+    @OneToOne(fetch = FetchType.LAZY, cascade = {})
     @MapsId
     @JoinColumn(name = "user_id")
     private UserDO user;
