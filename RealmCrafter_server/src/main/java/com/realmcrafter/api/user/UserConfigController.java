@@ -5,6 +5,7 @@ import com.realmcrafter.api.user.dto.EngineConfigDTO;
 import com.realmcrafter.api.user.dto.UpdateEngineConfigRequest;
 import com.realmcrafter.infrastructure.persistence.entity.UserConfigDO;
 import com.realmcrafter.infrastructure.persistence.repository.UserConfigRepository;
+import com.realmcrafter.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -18,6 +19,7 @@ import javax.validation.Valid;
 public class UserConfigController {
 
     private final UserConfigRepository userConfigRepository;
+    private final UserRepository userRepository;
 
     @GetMapping
     public Result<EngineConfigDTO> getEngineConfig(@RequestHeader("X-User-Id") Long userId) {
@@ -55,7 +57,8 @@ public class UserConfigController {
 
     private UserConfigDO defaultConfig(Long userId) {
         UserConfigDO c = new UserConfigDO();
-        c.setUserId(userId);
+        c.setUser(userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + userId)));
         return c;
     }
 }

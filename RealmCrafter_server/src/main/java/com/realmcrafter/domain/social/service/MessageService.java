@@ -20,10 +20,10 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class MessageService {
 
+    private static final int PREVIEW_MAX_LEN = 80;
+
     private final MessageRepository messageRepository;
     private final MessageSessionRepository messageSessionRepository;
-
-    private static final int PREVIEW_MAX_LEN = 80;
 
     @Transactional
     public MessageDO sendMessage(Long senderId, Long receiverId, MessageDO.MsgType type, String content) {
@@ -37,7 +37,9 @@ public class MessageService {
         msg.setSenderId(senderId);
         msg.setReceiverId(receiverId);
         msg.setMsgType(type != null ? type : MessageDO.MsgType.TEXT);
-        msg.setContent(content.trim());
+        String trimmed = content.trim();
+        msg.setContent(trimmed);
+        msg.setPayload(trimmed != null ? trimmed : "");
         msg = messageRepository.save(msg);
 
         String preview = toPreview(type, content);

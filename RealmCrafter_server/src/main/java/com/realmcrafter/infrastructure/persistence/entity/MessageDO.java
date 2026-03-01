@@ -36,6 +36,10 @@ public class MessageDO {
     @Column(name = "content", nullable = false, columnDefinition = "text")
     private String content;
 
+    /** 与 content 同义，按普通文本存储（TEXT），与 content 保持一致 */
+    @Column(name = "payload", columnDefinition = "text")
+    private String payload;
+
     @Column(name = "is_read", nullable = false)
     private Boolean isRead = false;
 
@@ -45,6 +49,7 @@ public class MessageDO {
     @PrePersist
     protected void onCreate() {
         if (createTime == null) createTime = LocalDateTime.now();
+        if (payload == null) payload = (content != null ? content : "");
     }
 
     public enum MsgType {
