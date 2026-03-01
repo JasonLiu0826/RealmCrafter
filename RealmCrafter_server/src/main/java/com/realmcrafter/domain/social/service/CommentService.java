@@ -1,6 +1,6 @@
 package com.realmcrafter.domain.social.service;
 
-import com.realmcrafter.domain.social.event.CommentAddedEvent;
+import com.realmcrafter.domain.social.service.AfterCommitNotificationRunner;
 import com.realmcrafter.infrastructure.persistence.entity.CommentDO;
 import com.realmcrafter.infrastructure.persistence.entity.UserDO;
 import com.realmcrafter.infrastructure.persistence.repository.CommentRepository;
@@ -8,11 +8,12 @@ import com.realmcrafter.infrastructure.persistence.repository.StoryRepository;
 import com.realmcrafter.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,7 +34,7 @@ public class CommentService {
     private final CommentRepository commentRepository;
     private final StoryRepository storyRepository;
     private final UserRepository userRepository;
-    private final ApplicationEventPublisher eventPublisher;
+    private final AfterCommitNotificationRunner afterCommitNotificationRunner;
 
     /**
      * 发表评论或回复。若为回复则 parentCommentId 非空，并会更新父评论 replyCount；保存前解析 @username 发送提及通知。
@@ -74,14 +75,16 @@ public class CommentService {
         }
 
         List<Long> toNotify = resolveMentionedUserIds(content, mentionedUserIds);
-        // 事务提交后执行提及通知与加经验，避免与当前事务内用户行锁冲突
-        eventPublisher.publishEvent(new CommentAddedEvent(
-                comment.getId(),
-                storyId,
-                userId,
-                content.trim(),
-                toNotify
-        ));
+        final long commentId = comment.getId();
+        final String excerpt = content.trim();
+        final List<Long> toNotifyFinal = new ArrayList<>(toNotify);
+        // 事务提交后在独立异步线程中执行提及通知与加经验
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                afterCommitNotificationRunner.runCommentMentionAndExp(commentId, storyId, userId, excerpt, toNotifyFinal);
+            }
+        });
 
         return comment;
     }

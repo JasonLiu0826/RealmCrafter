@@ -282,7 +282,7 @@ def main():
     ok("Bob 评论成功，已 @Alice")
 
     step("11. Alice 拉取未读通知（期望：REWARD 进账 + MENTION 被@）")
-    time.sleep(1)  # 留时间给异步通知落库
+    time.sleep(2)  # 留时间给 afterCommit 监听器落库
     r = requests.get(
         f"{BASE_URL}/api/v1/notifications?page=0&size=20",
         headers=auth_headers(alice_token, alice_id)
@@ -294,10 +294,14 @@ def main():
     mention_notifications = [n for n in notifications if n.get("type") == "MENTION"]
     if not reward_notifications:
         fail("Alice 未收到 REWARD 通知（Fork 分润）", f"当前通知: {[n.get('type') for n in notifications]}")
+        if not notifications:
+            info("响应 data 结构: " + json.dumps(content, ensure_ascii=False)[:200])
+        raise AssertionError("缺少 REWARD 通知")
     else:
         ok(f"Alice 收到 REWARD 通知（共 {len(reward_notifications)} 条）")
     if not mention_notifications:
         fail("Alice 未收到 MENTION 通知（被 @）")
+        raise AssertionError("缺少 MENTION 通知")
     else:
         ok(f"Alice 收到 MENTION 通知（共 {len(mention_notifications)} 条）")
 

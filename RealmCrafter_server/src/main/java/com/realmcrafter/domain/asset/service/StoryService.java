@@ -1,9 +1,8 @@
 package com.realmcrafter.domain.asset.service;
 
-import com.realmcrafter.domain.asset.event.StoryForkedEvent;
 import com.realmcrafter.domain.billing.CreatorPriceValidator;
 import com.realmcrafter.domain.billing.CreatorShareResolver;
-import com.realmcrafter.domain.social.service.NotificationService;
+import com.realmcrafter.domain.social.service.AfterCommitNotificationRunner;
 import com.realmcrafter.domain.user.ExpAction;
 import com.realmcrafter.domain.user.service.UserExpService;
 import com.realmcrafter.infrastructure.id.AssetIdGenerator;
@@ -18,11 +17,13 @@ import com.realmcrafter.infrastructure.persistence.repository.StoryRepository;
 import com.realmcrafter.infrastructure.persistence.repository.UserRepository;
 import com.realmcrafter.infrastructure.persistence.repository.WalletTransactionRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -32,6 +33,7 @@ import java.util.List;
 /**
  * 故事（书架）领域服务。
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class StoryService {
@@ -43,8 +45,7 @@ public class StoryService {
     private final UserRepository userRepository;
     private final WalletTransactionRepository walletTransactionRepository;
     private final UserExpService userExpService;
-    private final NotificationService notificationService;
-    private final ApplicationEventPublisher eventPublisher;
+    private final AfterCommitNotificationRunner afterCommitNotificationRunner;
 
     @Transactional(readOnly = true)
     public StoryDO getById(String id, Long userId) {
@@ -250,16 +251,17 @@ public class StoryService {
         original.setForkCount((original.getForkCount() != null ? original.getForkCount() : 0) + 1);
         storyRepository.save(original);
 
-        // 事务提交后执行加经验与通知，避免与当前事务内用户行锁冲突导致 PessimisticLockException
-        if (author != null) {
-            if (price.compareTo(BigDecimal.ZERO) > 0) {
-                eventPublisher.publishEvent(StoryForkedEvent.paid(original.getUserId(), forkUserId, sourceStoryId, price.multiply(creatorShare).setScale(2, RoundingMode.HALF_UP)));
-            } else {
-                eventPublisher.publishEvent(StoryForkedEvent.free(original.getUserId(), forkUserId, sourceStoryId));
+        // 事务提交后在独立异步线程中执行通知与加经验，确保落库且不阻塞响应
+        final Long authorId = original.getUserId();
+        final BigDecimal creatorAmountForNotify = price.compareTo(BigDecimal.ZERO) > 0 ? price.multiply(creatorShare).setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+        final boolean paid = price.compareTo(BigDecimal.ZERO) > 0;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                log.info("Fork afterCommit: sending REWARD notification for authorId={}", authorId);
+                afterCommitNotificationRunner.runForkRewardAndExp(authorId, forkUserId, sourceStoryId, creatorAmountForNotify, paid);
             }
-        } else {
-            eventPublisher.publishEvent(StoryForkedEvent.forkUserOnly(forkUserId, sourceStoryId));
-        }
+        });
 
         return newStory;
     }
